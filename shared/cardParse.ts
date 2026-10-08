@@ -1,7 +1,11 @@
 /**
- * Turns raw OCR text from a business card into contact fields. This is the on-device
- * fallback used when the server has no AI card reader; it gets the email, phone, and
- * website reliably and makes a reasonable guess at name, title, and organization.
+ * Sorts a business card's text into contact fields. The text comes from the phone's own
+ * reader (Google Lens on Android, Live Text on iPhone), pasted or shared into the app.
+ *
+ * Email, phone, and web address have recognizable shapes. For the rest, the email and web
+ * address do most of the work: the line holding the email's surname is the name, and the
+ * line matching the domain is the organization. Readers still misread some typefaces (small
+ * capitals turn C into G, digits stand in for letters), so those repairs stay.
  */
 
 export interface ParsedCard {
@@ -15,57 +19,6 @@ export interface ParsedCard {
   address: string;
   geo: string;
   other: string;
-}
-
-/** A word as the text reader reports it: text, confidence 0-100, and position. */
-export interface OcrWord {
-  text: string;
-  confidence: number;
-  bbox: { x0: number; y0: number; x1: number; y1: number };
-}
-
-/**
- * Turns the reader's lines into clean text lines:
- * - splits a line where a wide gap separates words, because two-column cards (address on
- *   the left, email and phone on the right) otherwise come back merged;
- * - drops symbol-only marks and low-confidence scraps from logos and seals, but keeps
- *   anything with a digit, @, or dot, since phone numbers often read correctly at low
- *   confidence;
- * - drops a line whose words are mostly low-confidence.
- */
-export function cleanOcrLines(lines: { words: OcrWord[] }[]): string[] {
-  const out: string[] = [];
-  for (const line of lines) {
-    const words = line.words.filter((w) => w.text.trim());
-    if (!words.length) continue;
-    const height = Math.max(...words.map((w) => w.bbox.y1 - w.bbox.y0), 1);
-    const groups: OcrWord[][] = [[words[0]]];
-    for (let i = 1; i < words.length; i++) {
-      const gap = words[i].bbox.x0 - words[i - 1].bbox.x1;
-      if (gap > height * 2.5) groups.push([]);
-      groups[groups.length - 1].push(words[i]);
-    }
-    for (const group of groups) {
-      // Words on a line the reader was otherwise sure about get more benefit of the doubt:
-      // it often scores real words low ("HOUSE" at 14, "PizzicoN:i" at 0) next to sure ones.
-      const sureLine = group.some((w) => w.confidence >= 80);
-      const kept = group.filter((w, i) => {
-        const t = w.text.trim();
-        if (sureLine && t.replace(/[^a-z]/gi, "").length >= 5 && /^[a-z]/i.test(t)) return true;
-        if (!/[a-z0-9]/i.test(t)) return false;
-        // Part of an email split by a space ("GINA." before "PIZZ...@MAIL").
-        if (/@/.test(group[i + 1]?.text ?? "") || /@/.test(group[i - 1]?.text ?? "")) return true;
-        if (/[\d@]|\.\w/.test(t)) return true;
-        return w.confidence >= 50 || (t.length > 3 && w.confidence >= 30);
-      });
-      if (!kept.length) continue;
-      const avg = kept.reduce((n, w) => n + w.confidence, 0) / kept.length;
-      if (avg < 35 && !kept.some((w) => /[\d@]/.test(w.text))) continue;
-      // Drop stray marks inside words ("PizzicoN:i" -> "PizzicoNi"); keep @ . - ' ( ) and digits.
-      out.push(kept.map((w) => w.text.trim().replace(/(?<=[a-z]):(?=[a-z])/gi, "")).join(" "));
-    }
-  }
-  return out;
 }
 
 const TITLE_WORDS =

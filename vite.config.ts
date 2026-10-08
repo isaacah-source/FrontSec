@@ -18,6 +18,14 @@ export default defineConfig({
         background_color: "#f5f6f8",
         display: "standalone",
         start_url: ".",
+        // Lets the installed app appear in Android's share menu: text shared from Google Lens
+        // (or any app) opens the new-contact form with that text. iPhones do not support
+        // this for web apps; there it is copy and paste.
+        share_target: {
+          action: "contacts/new",
+          method: "GET",
+          params: { title: "title", text: "text", url: "url" },
+        },
         scope: ".",
         // Drawn by icon-src/make-icons.mjs. "maskable" is what Android crops into a circle or
         // squircle on the home screen; "monochrome" is for Android's themed icons.
@@ -32,8 +40,7 @@ export default defineConfig({
       workbox: {
         // Contact data lives in OneDrive and is always fetched live; the service worker caches
         // the app shell only. config.json is fetched fresh so settings changes apply at once.
-        // The OCR engine is several MB; fetch it on first scan instead of at install.
-        globIgnores: ["tesseract/**", "config.json", "demo-seed.json"],
+        globIgnores: ["config.json", "demo-seed.json"],
         runtimeCaching: [],
         maximumFileSizeToCacheInBytes: 4 * 1024 * 1024,
       },

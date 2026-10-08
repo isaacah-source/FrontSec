@@ -1,5 +1,5 @@
 import { Suspense, lazy, useCallback, useEffect, useRef, useState } from "react";
-import { NavLink, Route, Routes } from "react-router-dom";
+import { NavLink, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { DataProvider, can, errorText, useStore, type Links } from "./lib/store";
 import { loadConfig, type AppConfig } from "./lib/config";
 import { Auth } from "./lib/auth";
@@ -7,6 +7,7 @@ import { GraphSheets } from "./lib/graph";
 import { demoSheets } from "./lib/demo";
 import { Repo, type Me, type Snapshot } from "./lib/repo";
 import type { SheetIO } from "./lib/sheets";
+import { hasSharedText } from "./lib/sharedText";
 import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
 import Contacts from "./pages/Contacts";
@@ -144,6 +145,15 @@ function Setup({ io, me, links, allowed, onDone, signOut }: { io: SheetIO; me: M
 
 function Shell({ demo }: { demo: boolean }) {
   const { me, online, toasts, signOut, lastSync } = useStore();
+  const location = useLocation();
+  const navigate = useNavigate();
+  // Card text shared from another app survives sign-in in session storage; once signed in,
+  // continue to the new-contact form with it.
+  useEffect(() => {
+    if (hasSharedText() && location.pathname !== "/contacts/new" && can(me, "contributor")) navigate("/contacts/new", { replace: true });
+    // Only on arrival.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const links = [
     { to: "/", label: "Today", icon: "◎", end: true },
     { to: "/contacts", label: "Contacts", icon: "☰" },

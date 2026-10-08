@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { cleanOcrLines, parseCardText } from "../../shared/cardParse.js";
-import { findCardBox } from "../../shared/cardImage.js";
+import { parseCardText } from "../../shared/cardParse.js";
 import { splitIssues } from "../../shared/constants.js";
 
 describe("parseCardText", () => {
@@ -48,49 +47,59 @@ describe("splitIssues", () => {
   });
 });
 
-// A made-up card laid out like a real one that failed: a round seal on the left whose
-// lettering reads as scraps ("CIN", "Lcy S"), the person's details on the right, and a second
-// column (address) that the reader merges with the email, phone, and website.
-const w = (text: string, confidence: number, x0: number, x1: number, y = 0) => ({
-  text, confidence, bbox: { x0, y0: y, x1, y1: y + 30 },
-});
-const SEAL_CARD = [
-  { words: [w("CIN", 71, 190, 260)] },
-  { words: [w("o>", 16, 120, 150), w("Dana", 95, 700, 800), w("Whitfield", 96, 815, 1000)] },
-  { words: [w("hy", 26, 100, 130), w("e)", 12, 140, 160), w("Senior", 95, 640, 760), w("Researcher", 96, 770, 1000)] },
-  { words: [w("=", 69, 100, 110), w("Meridian", 96, 560, 720), w("Policy", 96, 730, 840), w("Institute", 96, 850, 1000)] },
-  { words: [w("Lcy", 15, 190, 250), w("S", 80, 260, 280), w(":", 48, 290, 300)] },
-  { words: [w("1775", 93, 100, 170), w("Mass.", 92, 180, 260), w("Ave", 96, 270, 330), w("NW", 96, 340, 380), w("dwhitfield@meridianpolicy.org", 90, 600, 1000)] },
-  { words: [w("Suite", 95, 100, 180), w("400", 96, 190, 240), w("(202)", 0, 700, 780), w("555-0187", 8, 790, 1000)] },
-  { words: [w("Washington,", 96, 100, 260), w("DC", 96, 270, 310), w("20036", 96, 320, 400), w("wWww.meridianpolicy.org", 43, 640, 1000)] },
-];
+// Made-up cards as Google Lens or Live Text hand them over: one line per printed line, the
+// left column before the right, logo lettering included.
+const LENS_TWO_COLUMN = [
+  "MERIDIAN",
+  "Dana Whitfield",
+  "Senior Researcher",
+  "Meridian Policy Institute",
+  "1775 Massachusetts Ave NW",
+  "Suite 400",
+  "Washington, DC 20036",
+  "dwhitfield@meridianpolicy.org",
+  "(202) 555-0187",
+  "www.meridianpolicy.org",
+].join("\n");
 
-describe("reading a two-column card with a seal", () => {
-  it("splits columns and drops scraps", () => {
-    const lines = cleanOcrLines(SEAL_CARD);
-    expect(lines).toContain("Dana Whitfield");
-    expect(lines).toContain("Senior Researcher");
-    expect(lines).toContain("Suite 400");
-    expect(lines).toContain("(202) 555-0187");
-    expect(lines.join(" ")).not.toMatch(/o>|hy|e\)/);
-  });
-
-  it("uses the email and website to pick the name and organization", () => {
-    const card = parseCardText(cleanOcrLines(SEAL_CARD).join("\n"));
-    expect(card).toMatchObject({
+describe("pasted text from a phone's reader", () => {
+  it("sorts a two-column card", () => {
+    expect(parseCardText(LENS_TWO_COLUMN)).toMatchObject({
       name: "Dana Whitfield",
       title: "Senior Researcher",
       organization: "Meridian Policy Institute",
       email: "dwhitfield@meridianpolicy.org",
       phone: "(202) 555-0187",
       website: "www.meridianpolicy.org",
-      address: "1775 Mass. Ave NW, Suite 400, Washington, DC 20036",
+      address: "1775 Massachusetts Ave NW, Suite 400, Washington, DC 20036",
       geo: "Washington, DC",
     });
-    expect(card.other).toBe("");
   });
 
-  it("does not take seal scraps as a name even without an email", () => {
+  it("handles an all-capitals government card read cleanly", () => {
+    const card = parseCardText([
+      "COMMITTEE ON THE BUDGET",
+      "MAJORITY STAFF",
+      "ANN RICCI CALDER",
+      "PROFESSIONAL STAFF",
+      "TRADE SUBCOMMITTEE",
+      "U.S. HOUSE OF REPRESENTATIVES",
+      "H-100, U.S. CAPITOL",
+      "WASHINGTON, DC 20515",
+      "(202) 225-0000 (MAIN)",
+      "ANN.RICCICALDER@MAIL.HOUSE.GOV",
+    ].join("\n"));
+    expect(card).toMatchObject({
+      name: "Ann Ricci Calder",
+      title: "Professional Staff",
+      organization: "U.S. House of Representatives",
+      email: "ann.riccicalder@mail.house.gov",
+      phone: "(202) 225-0000",
+      address: "H-100, U.S. Capitol, Washington, DC 20515",
+    });
+  });
+
+  it("does not take logo lettering as a name even without an email", () => {
     expect(parseCardText("CIN Fes\nURC INS So\nDana Whitfield\nSenior Researcher").name).toBe("Dana Whitfield");
   });
 
@@ -98,23 +107,10 @@ describe("reading a two-column card with a seal", () => {
     const card = parseCardText("Sam Lee\nFoundation for Defense of Democracies\nslee@fdd.org");
     expect(card.organization).toBe("Foundation for Defense of Democracies");
   });
-});
 
-describe("findCardBox", () => {
-  it("finds a light card on a dark background", () => {
-    const W = 400, H = 300;
-    const gray = new Uint8Array(W * H).fill(40);
-    for (let y = 100; y < 220; y++) for (let x = 60; x < 340; x++) gray[y * W + x] = 235;
-    const box = findCardBox(gray, W, H)!;
-    expect(box.x).toBeLessThanOrEqual(60);
-    expect(box.x).toBeGreaterThan(50);
-    expect(box.y).toBeLessThanOrEqual(100);
-    expect(box.x + box.w).toBeGreaterThanOrEqual(340);
-    expect(box.y + box.h).toBeGreaterThanOrEqual(220);
-  });
-
-  it("leaves a photo alone when the card fills the frame", () => {
-    expect(findCardBox(new Uint8Array(400 * 300).fill(235), 400, 300)).toBeNull();
+  it("returns nothing useful for text that is not a card", () => {
+    const card = parseCardText("hello");
+    expect([card.name, card.email, card.phone]).toEqual(["", "", ""]);
   });
 });
 
@@ -150,16 +146,5 @@ describe("reading a small-caps congressional card", () => {
 
   it("keeps committee lines readable in the notes", () => {
     expect(parseCardText(SMALL_CAPS_CARD).other).toContain("TRADE SUBCOMMITTEE");
-  });
-});
-
-describe("low-confidence words on a well-read line", () => {
-  it("keeps real words the reader was unsure of when the rest of the line is sure", () => {
-    const lines = cleanOcrLines([
-      { words: [w("U.S.", 91, 0, 40), w("HOUSE", 14, 50, 120), w("OF", 96, 130, 160), w("REPRESENTATIVES", 96, 170, 380)] },
-      { words: [w("Gina", 82, 0, 100), w("PizzicoN:i", 0, 120, 330), w("GUPPLES", 50, 350, 540)] },
-      { words: [w("SERRE", 4, 0, 90), w("ESR", 10, 100, 150)] },
-    ]);
-    expect(lines).toEqual(["U.S. HOUSE OF REPRESENTATIVES", "Gina PizzicoNi GUPPLES"]);
   });
 });
