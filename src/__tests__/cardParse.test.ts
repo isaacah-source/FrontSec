@@ -117,3 +117,49 @@ describe("findCardBox", () => {
     expect(findCardBox(new Uint8Array(400 * 300).fill(235), 400, 300)).toBeNull();
   });
 });
+
+// A made-up congressional card in small capitals, with the misreads that typeface causes:
+// C read as G ("GALDER", "SUBGOMMITTEE", "DG"), odd capitals, and an email split by spaces
+// whose digits stand in for letters. The name and email each get a different letter wrong.
+const SMALL_CAPS_CARD = [
+  "SFT",
+  "GOMMITTEE ON THE BUDGET",
+  "MAJORITY STAFF",
+  "Ann Ricci GALDER",
+  "PROFESSIONAL STAFF",
+  "TRADE SUBGOMMITTEE",
+  "U.S. HOUSE OF REPRESENTATIVES",
+  "(202) 225-0000 (MAIN)",
+  "H-100, U.S.",
+  "ANN. R1GC1CALDER@MAIL HOUSE.GOV",
+  "WASHINGTON, DG 20515",
+].join("\n");
+
+describe("reading a small-caps congressional card", () => {
+  it("finds the person, not the subcommittee, and repairs misread letters", () => {
+    expect(parseCardText(SMALL_CAPS_CARD)).toMatchObject({
+      name: "Ann Ricci Calder",
+      title: "Professional Staff",
+      organization: "U.S. House of Representatives",
+      email: "ann.riccicalder@mail.house.gov",
+      phone: "(202) 225-0000",
+      address: "H-100, U.S., Washington, DC 20515",
+      geo: "Washington, DC",
+    });
+  });
+
+  it("keeps committee lines readable in the notes", () => {
+    expect(parseCardText(SMALL_CAPS_CARD).other).toContain("TRADE SUBCOMMITTEE");
+  });
+});
+
+describe("low-confidence words on a well-read line", () => {
+  it("keeps real words the reader was unsure of when the rest of the line is sure", () => {
+    const lines = cleanOcrLines([
+      { words: [w("U.S.", 91, 0, 40), w("HOUSE", 14, 50, 120), w("OF", 96, 130, 160), w("REPRESENTATIVES", 96, 170, 380)] },
+      { words: [w("Gina", 82, 0, 100), w("PizzicoN:i", 0, 120, 330), w("GUPPLES", 50, 350, 540)] },
+      { words: [w("SERRE", 4, 0, 90), w("ESR", 10, 100, 150)] },
+    ]);
+    expect(lines).toEqual(["U.S. HOUSE OF REPRESENTATIVES", "Gina PizzicoNi GUPPLES"]);
+  });
+});
