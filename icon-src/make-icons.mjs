@@ -1,36 +1,38 @@
-// Renders the app icons from the SVG drawings below. Run: node icon-src/make-icons.mjs
-// Outputs go to public/icons. Uses the Playwright Chromium already in devDependencies.
+// Renders the app icons from icon-src/logo.svg (the Frontier Security Institute mark).
+// Run: node icon-src/make-icons.mjs   Outputs go to public/icons.
+// Uses the Playwright Chromium already in devDependencies; set CHROMIUM_PATH to use another.
 import fs from "node:fs";
 import { chromium } from "playwright";
 
-const NAVY = "#1f3a5f";
-// Three people and the links between them, drawn on a 512 x 512 canvas.
-const glyph = (scale, mono = false) => {
-  const c = (hex) => (mono ? "#fff" : hex);
-  // translate(0 15) centers the three nodes vertically (their midpoint sits at y = 241).
-  return `<g transform="translate(256 256) scale(${scale}) translate(-256 -241)">
-    <g stroke="${c("#9fc0ff")}" stroke-width="18" stroke-linecap="round">
-      <line x1="176" y1="200" x2="342" y2="184"/>
-      <line x1="176" y1="200" x2="252" y2="338"/>
-      <line x1="342" y1="184" x2="252" y2="338"/>
-    </g>
-    <circle cx="176" cy="200" r="50" fill="${c("#ffffff")}"/>
-    <circle cx="342" cy="184" r="42" fill="${c("#ffd27a")}"/>
-    <circle cx="252" cy="338" r="50" fill="${c("#7fb0ff")}"/>
-  </g>`;
+const logo = fs.readFileSync(new URL("./logo.svg", import.meta.url), "utf8");
+const LOGO_W = 103;
+const LOGO_H = 93;
+const inner = logo.replace(/^[\s\S]*?<svg[^>]*>/, "").replace(/<\/svg>\s*$/, "");
+
+/** The logo centered on a 512 x 512 canvas, `width` pixels wide. */
+const placed = (width, body = inner) => {
+  const s = width / LOGO_W;
+  const x = (512 - width) / 2;
+  const y = (512 - LOGO_H * s) / 2;
+  return `<g transform="translate(${x} ${y}) scale(${s})">${body}</g>`;
 };
 const svg = (body) => `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">${body}</svg>`;
 
+// One-color version for Android themed icons: every mark white, no white panel behind it.
+const mono = inner
+  .replace(/<rect x="5" y="5" width="93" height="83" fill="#fff"\/>/, "")
+  .replace(/#ED1C24|#1C1D5F/g, "#fff");
+
 const drawings = {
-  // Standard icon: rounded square, used by browsers and desktop installs.
-  "icon.svg": svg(`<rect width="512" height="512" rx="112" fill="${NAVY}"/>${glyph(1.3)}`),
-  // Android adaptive ("maskable"): background fills the square and the drawing stays inside
-  // the central safe circle (40% radius), so any crop Android applies keeps it whole.
-  "maskable.svg": svg(`<rect width="512" height="512" fill="${NAVY}"/>${glyph(1.15)}`),
+  // Browsers and desktop installs: white rounded square with the logo.
+  "icon.svg": svg(`<rect width="512" height="512" rx="96" fill="#fff"/>${placed(420)}`),
+  // Android adaptive ("maskable"): white fills the square; the logo's corners stay inside
+  // the central safe circle (40% of the width from the center), so no crop cuts the frame.
+  "maskable.svg": svg(`<rect width="512" height="512" fill="#fff"/>${placed(290)}`),
   // Android 13+ themed icons: one color on transparent; Android tints it to the wallpaper.
-  "monochrome.svg": svg(glyph(1.15, true)),
+  "monochrome.svg": svg(placed(290, mono)),
   // iPhone home screen: full square, iOS rounds the corners itself.
-  "apple.svg": svg(`<rect width="512" height="512" fill="${NAVY}"/>${glyph(1.3)}`),
+  "apple.svg": svg(`<rect width="512" height="512" fill="#fff"/>${placed(400)}`),
 };
 
 const out = "public/icons";

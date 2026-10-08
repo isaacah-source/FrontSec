@@ -154,8 +154,10 @@ and on Android 13 or newer it follows themed icons if you have them turned on.
 
 **iPhone (Safari):** open the app's address, tap the **Share** button, then **Add to Home Screen**.
 
-The icons live in `public/icons` and are drawn by `icon-src/make-icons.mjs`. To change the
-design, edit the drawing in that script and run `node icon-src/make-icons.mjs`.
+The icons use the Frontier Security Institute mark. `icon-src/logo.svg` is a vector redraw of
+`icon-src/logo-original.png`, and `icon-src/make-icons.mjs` turns it into every icon size in
+`public/icons`. To change the icon, edit or replace `logo.svg` (keep its 103 x 93 shape, or
+update `LOGO_W` and `LOGO_H` in the script) and run `node icon-src/make-icons.mjs`.
 
 ## Relationship types
 
