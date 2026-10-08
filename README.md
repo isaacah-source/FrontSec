@@ -145,6 +145,18 @@ automatically. Afterwards, use that folder's sharing link as `folderUrl`.
 - **Owner names.** Two contacts list the owner as "Ike". The app treats a lone first name as
   matching the person with that first name, but "Ike Harris" in full is clearer.
 
+## Installing on a phone
+
+**Android (Chrome):** open the app's address, sign in, then tap the **⋮** menu and choose
+**Install app** (on some phones, **Add to Home screen**, then **Install**). The app gets its own
+icon and opens full screen without the browser bar. The icon adapts to your phone's icon shape,
+and on Android 13 or newer it follows themed icons if you have them turned on.
+
+**iPhone (Safari):** open the app's address, tap the **Share** button, then **Add to Home Screen**.
+
+The icons live in `public/icons` and are drawn by `icon-src/make-icons.mjs`. To change the
+design, edit the drawing in that script and run `node icon-src/make-icons.mjs`.
+
 ## Relationship types
 
 The app offers these types: Fellows, Advisors, Board, AI Labs, Media, Policy/NatSec/Gov,

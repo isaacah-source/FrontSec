@@ -9,7 +9,7 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: "autoUpdate",
-      includeAssets: ["icons/icon.svg", "icons/icon-192.png"],
+      includeAssets: ["icons/icon.svg", "icons/apple-touch-icon.png"],
       manifest: {
         name: "Relationship Tracker",
         short_name: "Relationships",
@@ -19,9 +19,14 @@ export default defineConfig({
         display: "standalone",
         start_url: ".",
         scope: ".",
+        // Drawn by icon-src/make-icons.mjs. "maskable" is what Android crops into a circle or
+        // squircle on the home screen; "monochrome" is for Android's themed icons.
         icons: [
-          { src: "icons/icon-192.png", sizes: "192x192", type: "image/png" },
-          { src: "icons/icon-512.png", sizes: "512x512", type: "image/png" },
+          { src: "icons/icon-192.png", sizes: "192x192", type: "image/png", purpose: "any" },
+          { src: "icons/icon-512.png", sizes: "512x512", type: "image/png", purpose: "any" },
+          { src: "icons/maskable-192.png", sizes: "192x192", type: "image/png", purpose: "maskable" },
+          { src: "icons/maskable-512.png", sizes: "512x512", type: "image/png", purpose: "maskable" },
+          { src: "icons/monochrome-512.png", sizes: "512x512", type: "image/png", purpose: "monochrome" },
         ],
       },
       workbox: {
