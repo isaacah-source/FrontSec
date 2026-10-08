@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { ConflictError } from "../lib/repo";
-import { can, errorText, useStore } from "../lib/store";
+import { can, errorText, today, useStore } from "../lib/store";
+import { readPhotoDate } from "../../shared/photoDate";
 import { ownerNames } from "./Contacts";
 import { Field } from "../components/ui";
 import { readCard, type ScanProgress } from "../lib/scanCard";
@@ -12,7 +13,7 @@ type Form = Record<string, string | boolean | number | null>;
 const BLANK: Form = {
   name: "", title: "", organization: "", relationshipType: "", status: "Not yet engaged", owner: "",
   email: "", phone: "", geo: "", interestArea: "", tags: "", international: false, restricted: false,
-  referredByName: "", referredByRole: "", lastContact: "", nextFollowUp: "", notes: "", linkedin: "", website: "", address: "",
+  referredByName: "", referredByRole: "", lastContact: "", nextFollowUp: "", dateAdded: "", notes: "", linkedin: "", website: "", address: "",
 };
 
 export default function ContactForm() {
@@ -22,8 +23,11 @@ export default function ContactForm() {
   const navigate = useNavigate();
   const existing = editingId ? contacts.find((c) => c.id === editingId) : undefined;
   const [form, setForm] = useState<Form>(() =>
-    existing ? toForm(existing) : { ...BLANK, owner: me.role === "contributor" ? me.name : "" },
+    existing ? toForm(existing) : { ...BLANK, owner: me.role === "contributor" ? me.name : "", dateAdded: today() },
   );
+  // Where the Date added value came from, shown under the field. A date the person typed is
+  // never replaced by a later scan.
+  const [dateSource, setDateSource] = useState<"today" | "photo" | "file" | "manual" | null>(existing ? null : "today");
   // What the form started from: only fields that differ from it are saved, so edits other
   // people make in the meantime to other fields survive.
   const [base, setBase] = useState<Form>(() => (existing ? toForm(existing) : { ...BLANK }));
@@ -64,6 +68,16 @@ export default function ContactForm() {
     if (!file) return;
     setError("");
     try {
+      if (dateSource !== "manual") {
+        // The date the photo was taken (from the camera's EXIF data); otherwise the file's
+        // own date; otherwise today. A picture of a card from last week's event dates the
+        // contact to that event.
+        const fromPhoto = readPhotoDate(await file.arrayBuffer());
+        const fromFile = file.lastModified ? localDate(new Date(file.lastModified)) : null;
+        const date = [fromPhoto, fromFile].find((d) => d && d <= today());
+        set("dateAdded", date ?? today());
+        setDateSource(date === fromPhoto && fromPhoto ? "photo" : date ? "file" : "today");
+      }
       const fields = await readCard(file, setScan);
       const filled: string[] = [];
       setForm((f) => {
@@ -192,6 +206,21 @@ export default function ContactForm() {
         <Field label="Referred by (role)">{text("referredByRole")}</Field>
         <Field label="Date of last contact"><input type="date" value={String(form.lastContact ?? "")} onChange={(e) => set("lastContact", e.target.value)} /></Field>
         <Field label="Next follow-up"><input type="date" value={String(form.nextFollowUp ?? "")} onChange={(e) => set("nextFollowUp", e.target.value)} /></Field>
+        <Field label="Date added">
+          <input
+            type="date"
+            value={String(form.dateAdded ?? "")}
+            max={today()}
+            className={dateSource === "photo" || dateSource === "file" ? "scanned" : ""}
+            onChange={(e) => {
+              set("dateAdded", e.target.value);
+              setDateSource("manual");
+            }}
+          />
+          {dateSource === "photo" && <span className="muted small">Date the card photo was taken</span>}
+          {dateSource === "file" && <span className="muted small">Date of the photo file</span>}
+          {dateSource === "today" && <span className="muted small">Today; change it if you met them earlier</span>}
+        </Field>
         <Field label="LinkedIn">{text("linkedin")}</Field>
         <Field label="Website">{text("website")}</Field>
         <Field label="Address" wide>{text("address")}</Field>
@@ -222,4 +251,9 @@ function toForm(c: Contact): Form {
     f[k] = typeof v === "boolean" ? v : ((v as string | null) ?? "");
   }
   return f;
+}
+
+/** "YYYY-MM-DD" in the device's own time zone. */
+function localDate(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }

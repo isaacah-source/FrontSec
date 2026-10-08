@@ -70,6 +70,14 @@ describe("writing", () => {
     expect(master[3][7]).toBe("+1 415 555 0101");
   });
 
+  it("keeps the date added the person chose, and defaults to today", async () => {
+    const chosen = await repo.createContact({ name: "Met Last Month", dateAdded: "2026-09-15" });
+    expect(chosen.dateAdded).toBe("2026-09-15");
+    const d = new Date();
+    const local = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    expect((await repo.createContact({ name: "Met Today" })).dateAdded).toBe(local);
+  });
+
   it("retries when someone else takes the same row", async () => {
     let raced = false;
     // The other person's write to the same row lands just after ours and wins.
