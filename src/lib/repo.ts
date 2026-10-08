@@ -111,7 +111,11 @@ export function toCell(v: string | null | undefined): Cell {
 }
 
 const nowStamp = () => new Date().toISOString().replace("T", " ").slice(0, 19) + " UTC";
-const today = () => new Date().toISOString().slice(0, 10);
+/** Today in the device's time zone. (toISOString would give UTC: tomorrow, on a U.S. evening.) */
+const today = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+};
 
 // ---- Repository ----------------------------------------------------------------------
 
@@ -185,7 +189,8 @@ export class Repo {
         ...data,
         id,
         status: data.status ?? "Not yet engaged",
-        dateAdded: today(),
+        // The form sends the date the person chose (today, or the card photo's date).
+        dateAdded: data.dateAdded || today(),
         addedBy: this.me.name,
         updatedAt: nowStamp(),
         updatedBy: this.me.name,
