@@ -166,6 +166,10 @@ export default function ContactForm() {
           <select value={String(form.relationshipType ?? "")} onChange={(e) => set("relationshipType", e.target.value)}>
             <option value="">Choose…</option>
             {RELATIONSHIP_TYPES.map((t) => <option key={t}>{t}</option>)}
+            {/* Keep a retired type selectable so opening the form does not silently change it. */}
+            {form.relationshipType && !(RELATIONSHIP_TYPES as readonly string[]).includes(String(form.relationshipType)) && (
+              <option value={String(form.relationshipType)}>{String(form.relationshipType)} (old category)</option>
+            )}
           </select>
         </Field>
         <Field label="Status">

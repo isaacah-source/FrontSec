@@ -145,6 +145,28 @@ automatically. Afterwards, use that folder's sharing link as `folderUrl`.
 - **Owner names.** Two contacts list the owner as "Ike". The app treats a lone first name as
   matching the person with that first name, but "Ike Harris" in full is clearer.
 
+## Relationship types
+
+The app offers these types: Fellows, Advisors, Board, AI Labs, Media, Policy/NatSec/Gov,
+Donors/Funders, Research/Institutional Partners, and International Gov/Diplomatic.
+The list lives in `shared/constants.ts`.
+
+"Fellows/Advisors/Board" was split into Fellows, Advisors, and Board. Contacts that still
+carry the old type keep it, and it stays in the type filter until none are left. To move them,
+filter Contacts by "Fellows/Advisors/Board", tick the people who belong in one group, and use
+**Set type** in the bar that appears (editors and admins).
+
+The workbook needs two matching changes in Excel, which the app cannot make:
+
+1. **Dropdown on Master.** Select column D on Master, open **Data > Data Validation**, and in
+   **Source** replace `Fellows/Advisors/Board` with `Fellows,Advisors,Board`.
+2. **Category tabs.** The "Fellows & Advisors" tab lists rows whose type is exactly
+   "Fellows/Advisors/Board", so it empties as people move. For one tab per group, right-click
+   the tab, choose **Move or Copy**, tick **Create a copy**, and rename the copy (for example
+   "Fellows"). On the copy, select column V, press **Ctrl+H**, and replace
+   `"Fellows/Advisors/Board"` with `"Fellows"` (keep the quotation marks). Repeat for Advisors
+   and Board. Do not rename the Master tab or its headers.
+
 ## Development
 
 ```bash

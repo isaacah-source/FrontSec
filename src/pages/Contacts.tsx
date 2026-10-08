@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { addDays, can, errorText, formatDate, isOwner, today, useStore } from "../lib/store";
 import { Empty, FollowUp, StatusBadge, initials } from "../components/ui";
-import { RELATIONSHIP_TYPES, STATUSES, splitIssues, type Contact, type User } from "../../shared/constants";
+import { RELATIONSHIP_TYPES as RELATIONSHIP_TYPE_CHOICES, STATUSES, splitIssues, typeOptions, type Contact, type User } from "../../shared/constants";
 
 type SortKey = "name" | "organization" | "status" | "owner" | "lastContact" | "nextFollowUp";
 
@@ -97,6 +97,7 @@ export default function Contacts() {
   const bulkMode = can(me, "editor");
   const hasFilters = q || type || status || owner || due || issue || org;
   const owners = ownerNames(users, contacts);
+  const types = typeOptions(contacts);
 
   const Th = ({ k, children }: { k: SortKey; children: string }) => (
     <th className="sortable" onClick={() => toggleSort(k)}>
@@ -118,7 +119,7 @@ export default function Contacts() {
         <input type="search" className="search" placeholder="Search name, org, notes, tags…" value={q} onChange={(e) => set("q", e.target.value)} />
         <select value={type} onChange={(e) => set("type", e.target.value)} aria-label="Relationship type">
           <option value="">All types</option>
-          {RELATIONSHIP_TYPES.map((t) => <option key={t}>{t}</option>)}
+          {types.map((t) => <option key={t}>{t}</option>)}
         </select>
         <select value={status} onChange={(e) => set("status", e.target.value)} aria-label="Status">
           <option value="">All statuses</option>
@@ -156,6 +157,13 @@ export default function Contacts() {
             <option value="">Assign owner…</option>
             <option value={"\u0000"}>Nobody</option>
             {owners.map((n) => <option key={n}>{n}</option>)}
+          </select>
+          <select disabled={busy} defaultValue="" onChange={(e) => {
+            if (e.target.value) bulk({ relationshipType: e.target.value }, `Type set to ${e.target.value}`);
+            e.target.value = "";
+          }}>
+            <option value="">Set type…</option>
+            {RELATIONSHIP_TYPE_CHOICES.map((t) => <option key={t}>{t}</option>)}
           </select>
           <select disabled={busy} defaultValue="" onChange={(e) => {
             if (e.target.value) bulk({ status: e.target.value }, `Status set to ${e.target.value}`);

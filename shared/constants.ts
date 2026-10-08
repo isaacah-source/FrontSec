@@ -2,7 +2,9 @@
 // dropdowns in the FSI Relationship Tracker workbook so imported rows keep their values.
 
 export const RELATIONSHIP_TYPES = [
-  "Fellows/Advisors/Board",
+  "Fellows",
+  "Advisors",
+  "Board",
   "AI Labs",
   "Media",
   "Policy/NatSec/Gov",
@@ -10,6 +12,19 @@ export const RELATIONSHIP_TYPES = [
   "Research/Institutional Partners",
   "International Gov/Diplomatic",
 ] as const;
+
+/**
+ * Choices for a Relationship Type picker: the standard list, plus any other value already
+ * in the workbook (for example the retired "Fellows/Advisors/Board"), so contacts that
+ * still carry an old type can be found and moved.
+ */
+export function typeOptions(contacts: { relationshipType: string | null }[]): string[] {
+  const extra = new Set<string>();
+  for (const c of contacts) {
+    if (c.relationshipType && !(RELATIONSHIP_TYPES as readonly string[]).includes(c.relationshipType)) extra.add(c.relationshipType);
+  }
+  return [...RELATIONSHIP_TYPES, ...[...extra].sort()];
+}
 
 export const STATUSES = [
   "Not yet engaged",

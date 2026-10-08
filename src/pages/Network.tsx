@@ -4,12 +4,14 @@ import cytoscape, { type Core, type ElementDefinition } from "cytoscape";
 import fcose from "cytoscape-fcose";
 import { useStore } from "../lib/store";
 import { StatusBadge } from "../components/ui";
-import { RELATIONSHIP_TYPES, STATUSES, splitIssues, type Contact } from "../../shared/constants";
+import { STATUSES, splitIssues, typeOptions, type Contact } from "../../shared/constants";
 
 cytoscape.use(fcose);
 
 const TYPE_COLORS: Record<string, string> = {
-  "Fellows/Advisors/Board": "#2f6fdf",
+  Fellows: "#2f6fdf",
+  Advisors: "#5b8def",
+  Board: "#1c3f8f",
   "AI Labs": "#8a4fd6",
   Media: "#e0782d",
   "Policy/NatSec/Gov": "#1f9d6b",
@@ -209,9 +211,9 @@ export default function Network() {
         {focus && <button className="chip" onClick={() => setParams({})}>Clear focus ✕</button>}
       </div>
       <div className="legend">
-        {RELATIONSHIP_TYPES.map((t) => (
+        {typeOptions(contacts).map((t) => (
           <button key={t} className={`legend-item ${types.size && !types.has(t) ? "off" : ""}`} onClick={() => toggleType(t)}>
-            <i style={{ background: TYPE_COLORS[t] }} />{t}
+            <i style={{ background: TYPE_COLORS[t] ?? OTHER }} />{t}
           </button>
         ))}
         {types.size > 0 && <button className="linkish small" onClick={() => setTypes(new Set())}>All types</button>}
