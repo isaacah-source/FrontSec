@@ -17,6 +17,50 @@ export interface ParsedCard {
   other: string;
 }
 
+/** A word as the text reader reports it: text, confidence 0-100, and position. */
+export interface OcrWord {
+  text: string;
+  confidence: number;
+  bbox: { x0: number; y0: number; x1: number; y1: number };
+}
+
+/**
+ * Turns the reader's lines into clean text lines:
+ * - splits a line where a wide gap separates words, because two-column cards (address on
+ *   the left, email and phone on the right) otherwise come back merged;
+ * - drops symbol-only marks and low-confidence scraps from logos and seals, but keeps
+ *   anything with a digit, @, or dot, since phone numbers often read correctly at low
+ *   confidence;
+ * - drops a line whose words are mostly low-confidence.
+ */
+export function cleanOcrLines(lines: { words: OcrWord[] }[]): string[] {
+  const out: string[] = [];
+  for (const line of lines) {
+    const words = line.words.filter((w) => w.text.trim());
+    if (!words.length) continue;
+    const height = Math.max(...words.map((w) => w.bbox.y1 - w.bbox.y0), 1);
+    const groups: OcrWord[][] = [[words[0]]];
+    for (let i = 1; i < words.length; i++) {
+      const gap = words[i].bbox.x0 - words[i - 1].bbox.x1;
+      if (gap > height * 2.5) groups.push([]);
+      groups[groups.length - 1].push(words[i]);
+    }
+    for (const group of groups) {
+      const kept = group.filter((w) => {
+        const t = w.text.trim();
+        if (!/[a-z0-9]/i.test(t)) return false;
+        if (/[\d@]|\.\w/.test(t)) return true;
+        return w.confidence >= 50 || (t.length > 3 && w.confidence >= 30);
+      });
+      if (!kept.length) continue;
+      const avg = kept.reduce((n, w) => n + w.confidence, 0) / kept.length;
+      if (avg < 35 && !kept.some((w) => /[\d@]/.test(w.text))) continue;
+      out.push(kept.map((w) => w.text.trim()).join(" "));
+    }
+  }
+  return out;
+}
+
 const TITLE_WORDS =
   /\b(chief|officer|director|manager|president|vice|vp|head|lead|founder|partner|principal|senior|sr\.?|junior|associate|analyst|engineer|counsel|advisor|adviser|fellow|professor|researcher|scientist|editor|reporter|correspondent|ceo|cto|cfo|coo|ciso|chair|secretary|staff|deputy|assistant|specialist|consultant|executive|member|legislative|policy)\b/i;
 const ORG_WORDS =
@@ -31,7 +75,30 @@ function isNameLike(line: string): boolean {
   const words = line.split(/\s+/);
   if (words.length < 2 || words.length > 4) return false;
   if (/[\d@/]/.test(line) || TITLE_WORDS.test(line) || ORG_WORDS.test(line)) return false;
-  return words.every((w) => /^[A-Z][a-zA-Z'’.-]*,?$/.test(w) || /^(de|van|von|da|del|la|le)$/i.test(w));
+  // Names use one style throughout ("Kevin Harrington" or "KEVIN HARRINGTON"); mixed
+  // styles such as "CIN Fes" are scraps of logo or seal lettering.
+  const main = words.filter((w) => !/^(de|van|von|da|del|la|le)$/i.test(w) && !/^[A-Z]\.?$/.test(w));
+  const caps = main.filter((w) => /^[A-Z]{2,},?$/.test(w)).length;
+  if (caps > 0 && caps < main.length) return false;
+  return words.every((w, i) => {
+    if (/^(de|van|von|da|del|la|le)$/i.test(w)) return true;
+    // A middle initial ("R." or "R"), never first or last.
+    if (/^[A-Z]\.?$/.test(w)) return i > 0 && i < words.length - 1;
+    // Capitalized ("Kevin", "O'Neill") or all capitals of 3+ letters ("KEVIN"); needs a vowel.
+    return (/^[A-Z][a-z'’.-]+,?$/.test(w) || /^[A-Z]{3,},?$/.test(w)) && /[aeiouy]/i.test(w);
+  });
+}
+
+/** Lower-case letters only, for comparing "Potomac Institute" with "potomacinstitute". */
+const squash = (s: string) => s.toLowerCase().replace(/[^a-z]/g, "");
+const MINOR = new Set(["of", "for", "the", "and", "on", "in", "at", "&"]);
+
+/** Whether a line looks like the organization behind an email or web domain. */
+function matchesDomain(line: string, domain: string): boolean {
+  if (domain.length < 3) return false;
+  if (squash(line).includes(domain)) return true;
+  const initials = line.split(/\s+/).filter((w) => !MINOR.has(w.toLowerCase())).map((w) => w[0]?.toLowerCase() ?? "").join("");
+  return initials.length >= 3 && initials === domain;
 }
 
 export function parseCardText(text: string, fallbackOrgFromEmail = true): ParsedCard {
@@ -58,7 +125,8 @@ export function parseCardText(text: string, fallbackOrgFromEmail = true): Parsed
     }
     const url = rest.match(URL);
     if (url && !EMAIL.test(line.slice(line.indexOf(url[0]) - 1))) {
-      if (!out.website) out.website = url[1];
+      // Readers often double the w's ("wWww."); normalize the start of a web address.
+      if (!out.website) out.website = url[1].toLowerCase().replace(/^(https?:\/\/)?w{2,}\./, "$1www.");
       rest = rest.replace(url[0], "").trim();
     }
     const phone = rest.match(PHONE);
@@ -68,7 +136,7 @@ export function parseCardText(text: string, fallbackOrgFromEmail = true): Parsed
       else extra.push(rest);
       continue;
     }
-    if (STREET.test(rest) || CITY_STATE.test(rest)) {
+    if (STREET.test(rest) || CITY_STATE.test(rest) || /^(suite|ste\.?|floor|fl\.?|room|rm\.?|unit|p\.?o\.? box)\s*\w+/i.test(rest)) {
       out.address = out.address ? `${out.address}, ${rest}` : rest;
       const cs = rest.match(CITY_STATE);
       if (cs) out.geo = `${cs[1].trim()}, ${cs[2]}`;
@@ -77,9 +145,20 @@ export function parseCardText(text: string, fallbackOrgFromEmail = true): Parsed
     if (rest) left.push(rest);
   }
 
-  const nameIdx = left.findIndex(isNameLike);
+  // The email usually holds the surname ("kharrington" -> "Harrington") and the domain the
+  // organization ("potomacinstitute.org"). Prefer lines that agree with them; seals and logos
+  // produce name-shaped scraps, and the first name-shaped line is often one of those.
+  const local = squash(out.email.split("@")[0] ?? "");
+  const domainOf = (s: string) => (s.replace(/^.*@/, "").replace(/^(https?:\/\/)?(www\.)?/i, "").split(/[./]/)[0] ?? "").toLowerCase();
+  const domains = [domainOf(out.email), domainOf(out.website)].filter((d) => d && !/^(gmail|yahoo|outlook|hotmail|icloud|aol|proton|protonmail|me)$/.test(d));
+  const candidates = left.map((l, i) => ({ l, i })).filter(({ l }) => isNameLike(l));
+  const byEmail = local.length >= 3
+    ? candidates.find(({ l }) => l.split(/\s+/).some((w) => squash(w).length >= 3 && local.includes(squash(w))))
+    : undefined;
+  const nameIdx = (byEmail ?? candidates[0])?.i ?? -1;
   if (nameIdx >= 0) out.name = left[nameIdx].replace(/,$/, "");
   const remaining = left.filter((_, i) => i !== nameIdx);
+  const orgByDomain = remaining.findIndex((l) => domains.some((d) => matchesDomain(l, d)));
   // "Meridian Policy Institute" and "Senior Fellow, Technology Policy" both contain a
   // title word, so score each line: title words count for it, organization words against.
   const count = (re: RegExp, l: string) => (l.match(new RegExp(re.source, "gi")) ?? []).length;
@@ -93,8 +172,12 @@ export function parseCardText(text: string, fallbackOrgFromEmail = true): Parsed
     }
   });
   if (titleIdx >= 0) out.title = remaining[titleIdx];
-  const orgIdx = remaining.findIndex((l, i) => i !== titleIdx && ORG_WORDS.test(l));
-  const orgPick = orgIdx >= 0 ? orgIdx : remaining.findIndex((_, i) => i !== titleIdx);
+  if (orgByDomain >= 0 && orgByDomain === titleIdx) {
+    titleIdx = remaining.findIndex((l, i) => i !== orgByDomain && TITLE_WORDS.test(l));
+    out.title = titleIdx >= 0 ? remaining[titleIdx] : "";
+  }
+  const orgIdx = orgByDomain >= 0 ? orgByDomain : remaining.findIndex((l, i) => i !== titleIdx && ORG_WORDS.test(l));
+  const orgPick = orgIdx >= 0 ? orgIdx : remaining.findIndex((l, i) => i !== titleIdx && /[a-z]{4,}/i.test(l));
   if (orgPick >= 0) out.organization = remaining[orgPick];
   if (!out.organization && fallbackOrgFromEmail && out.email) {
     const domain = out.email.split("@")[1]?.split(".")[0] ?? "";
@@ -102,6 +185,9 @@ export function parseCardText(text: string, fallbackOrgFromEmail = true): Parsed
       out.organization = domain.toUpperCase().length <= 4 ? domain.toUpperCase() : domain[0].toUpperCase() + domain.slice(1);
     }
   }
-  out.other = [...remaining.filter((_, i) => i !== titleIdx && i !== orgPick), ...extra].join("\n");
+  // Keep leftovers that look like real information (a word of 4+ letters, or a number such
+  // as a fax line); drop scraps from logos and seals like "CIN" or "Lcy S".
+  const meaningful = (l: string) => /[a-z]{4,}/i.test(l) || /\d{3,}/.test(l);
+  out.other = [...remaining.filter((l, i) => i !== titleIdx && i !== orgPick && meaningful(l)), ...extra].join("\n");
   return out;
 }

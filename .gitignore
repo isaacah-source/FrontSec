@@ -6,3 +6,6 @@ public/tesseract/
 public/config.json
 public/demo-seed.json
 
+
+# Language data the text reader caches when run from the command line
+*.traineddata
