@@ -24,8 +24,9 @@ Works in any browser on a laptop or phone, and can be added to a phone's home sc
   can set the next follow-up in one tap.
 - **Network map.** Contacts connected by organization, shared issue, personal connection,
   or the staff member who owns the relationship.
-- **Business card scanning.** Take a photo on your phone and the form fills in. The photo is
-  read on the device and never uploaded.
+- **Business cards.** Your phone's own text reader (Google Lens on Android, Live Text on
+  iPhone) reads the card; paste the text into the new-contact form, or on Android share it
+  straight to the app, and the form fills in. See *Adding a business card*.
 - **Roles.** Admin, editor, contributor, viewer (see *Access and roles*).
 - **Demo mode.** Open the app with `?demo` at the end of the address to try it with sample
   data and no sign-in. Nothing is saved.
@@ -154,6 +155,27 @@ and on Android 13 or newer it follows themed icons if you have them turned on.
 
 **iPhone (Safari):** open the app's address, tap the **Share** button, then **Add to Home Screen**.
 
+## Adding a business card
+
+The app does not read images itself. The phone's built-in reader does, and the app sorts the
+text into fields (`shared/cardParse.ts`): the line holding the email's surname is the name,
+the line matching the email or web domain is the organization, and so on. Check the fields
+before saving; anything the app could not place goes into Notes.
+
+**Android (Google Lens):** point Lens (or the Lens button in the camera) at the card, tap
+**Text**, **Select all**, **Copy text**, then **Paste card text** on the new-contact form. If
+the app is installed and Lens offers **Share**, choose **Relationship Tracker** and the form
+opens already filled in.
+
+**iPhone or iPad (Live Text):** in the Camera, or on a photo of the card in Photos, tap the
+Live Text button, **Select All**, **Copy**, then **Paste card text**. iPhones do not let web
+apps receive shared text, so it is always copy and paste there.
+
+**Computer:** paste text from an email signature or anywhere else into the same box.
+
+The pasted text stays in a box above the form, so you can fix a misread line and tap
+**Fill in fields** again. **Date added** starts as today and can be changed.
+
 The icons use the Frontier Security Institute mark. `icon-src/logo.svg` is a vector redraw of
 `icon-src/logo-original.png`, and `icon-src/make-icons.mjs` turns it into every icon size in
 `public/icons`. To change the icon, edit or replace `logo.svg` (keep its 103 x 93 shape, or
@@ -187,7 +209,7 @@ The workbook needs two matching changes in Excel, which the app cannot make:
 npm install
 cp config.example.json public/config.json   # then fill it in
 npm run dev        # http://localhost:5175 (add ?demo for sample data)
-npm test           # workbook mapping, Microsoft Graph calls, card parsing
+npm test           # workbook mapping, Microsoft Graph calls, sorting card text into fields
 npm run typecheck
 npm run build
 ```
@@ -199,7 +221,7 @@ Code layout:
 - `src/lib/graph.ts`: the Microsoft Graph calls (sharing link, Excel ranges, sessions, retries).
 - `src/lib/auth.ts`: Microsoft sign-in (MSAL).
 - `src/lib/store.tsx`: loads the workbook and polls for changes.
-- `src/pages/`: the screens. `shared/` holds the vocabulary and the business card parser.
+- `src/pages/`: the screens. `shared/` holds the vocabulary and the business card text sorter.
 
 ## Limits worth knowing
 
