@@ -80,17 +80,19 @@ export function buildGraph(
 }
 
 const STYLE: cytoscape.StylesheetJson = [
-  { selector: "node", style: { label: "data(label)", "font-size": 9, color: "#2b3445", "text-valign": "bottom", "text-margin-y": 3, "min-zoomed-font-size": 7 } },
+  // Labels shrink with the zoom and are hidden below 8 px on screen, so organization and issue
+  // names (larger) stay readable from the overview and people's names appear as you zoom in.
+  { selector: "node", style: { label: "data(label)", "font-size": 10, color: "#2b3445", "text-valign": "bottom", "text-margin-y": 3, "min-zoomed-font-size": 8 } },
   { selector: 'node[kind = "contact"]', style: { "background-color": "data(color)", width: 14, height: 14 } },
-  { selector: 'node[kind = "org"]', style: { shape: "round-rectangle", "background-color": "#dfe6f1", "border-color": "#5b6b86", "border-width": 1.5, width: "data(size)", height: "data(size)", "font-weight": "bold", "font-size": 10 } },
-  { selector: 'node[kind = "issue"]', style: { shape: "diamond", "background-color": "#fdf0d5", "border-color": "#b98a1b", "border-width": 1.5, width: "data(size)", height: "data(size)", "font-size": 10 } },
-  { selector: 'node[kind = "owner"]', style: { shape: "star", "background-color": "#1f3a5f", width: "data(size)", height: "data(size)", "font-weight": "bold", "font-size": 11 } },
+  { selector: 'node[kind = "org"]', style: { shape: "round-rectangle", "background-color": "#dfe6f1", "border-color": "#5b6b86", "border-width": 1.5, width: "data(size)", height: "data(size)", "font-weight": "bold", "font-size": 20 } },
+  { selector: 'node[kind = "issue"]', style: { shape: "diamond", "background-color": "#fdf0d5", "border-color": "#b98a1b", "border-width": 1.5, width: "data(size)", height: "data(size)", "font-size": 18 } },
+  { selector: 'node[kind = "owner"]', style: { shape: "star", "background-color": "#1f3a5f", width: "data(size)", height: "data(size)", "font-weight": "bold", "font-size": 22 } },
   { selector: "edge", style: { width: 1, "line-color": "#c7cfdb", "curve-style": "haystack", opacity: 0.8 } },
   { selector: 'edge[kind = "issue"]', style: { "line-color": "#e9cf8f" } },
   { selector: 'edge[kind = "owner"]', style: { "line-color": "#9fb1cc", "line-style": "dashed" } },
   { selector: 'edge[kind = "personal"]', style: { width: 2.5, "line-color": "#d1497b", "curve-style": "bezier", label: "data(label)", "font-size": 7, color: "#a33a62", "text-rotation": "autorotate" } },
   { selector: ".faded", style: { opacity: 0.12 } },
-  { selector: "node.hit", style: { "border-width": 3, "border-color": "#111", "font-weight": "bold", "font-size": 12, "z-index": 10 } },
+  { selector: "node.hit", style: { "border-width": 3, "border-color": "#111", "font-weight": "bold", "font-size": 14, "min-zoomed-font-size": 0, "z-index": 10, "text-background-color": "#fff", "text-background-opacity": 0.9, "text-background-padding": "2px", "text-background-shape": "roundrectangle" } },
 ];
 
 export default function Network() {
@@ -116,26 +118,54 @@ export default function Network() {
     [visible, connections, layers, singletons, isolated, focus],
   );
 
+  // The store hands over fresh arrays on every background reload (every 10-60 seconds), even
+  // when nothing changed. Rebuild the drawing only when the nodes or links themselves differ;
+  // otherwise zoom, position, and the highlighted person would reset each time.
+  const graphKey = useMemo(
+    () => graph.elements.map((e) => `${e.data.id}|${e.data.label ?? ""}|${e.data.color ?? ""}`).join("\n"),
+    [graph],
+  );
+  const latest = useRef({ graph, contacts });
+  latest.current = { graph, contacts };
+  // Where nodes were and how the view was zoomed before a rebuild, so adding one contact
+  // does not reshuffle the whole map.
+  const saved = useRef<{ positions: Map<string, cytoscape.Position>; zoom: number; pan: cytoscape.Position } | null>(null);
+
   useEffect(() => {
     if (!box.current) return;
+    const prev = saved.current;
     const instance = cytoscape({
       container: box.current,
-      elements: graph.elements,
+      elements: latest.current.graph.elements,
       style: STYLE,
-      layout: { name: "fcose", animate: false, nodeRepulsion: 6000, idealEdgeLength: 70, packComponents: true } as cytoscape.LayoutOptions,
-      minZoom: 0.15,
-      maxZoom: 3,
-      wheelSensitivity: 0.3,
+      minZoom: 0.1,
+      maxZoom: 4,
     });
+    const known = prev ? instance.nodes().filter((n) => prev.positions.has(n.id())) : instance.collection();
+    if (prev && known.length >= instance.nodes().length * 0.8) {
+      // Mostly the same map: put nodes back where they were, settle only the new ones nearby,
+      // and keep the person's zoom and position.
+      known.forEach((n) => {
+        n.position(prev.positions.get(n.id())!);
+      });
+      instance.layout({ name: "fcose", animate: false, randomize: false, fixedNodeConstraint: known.map((n) => ({ nodeId: n.id(), position: (n as cytoscape.NodeSingular).position() })) } as cytoscape.LayoutOptions).run();
+      instance.viewport({ zoom: prev.zoom, pan: prev.pan });
+    } else {
+      instance.layout({ name: "fcose", animate: false, nodeRepulsion: 6000, idealEdgeLength: 70, packComponents: true } as cytoscape.LayoutOptions).run();
+      instance.fit(undefined, 30);
+    }
+
     instance.on("tap", "node", (e) => {
       const id: string = e.target.id();
+      const { graph: g, contacts: cs } = latest.current;
       if (id.startsWith("c:")) {
-        const c = contacts.find((x) => x.id === Number(id.slice(2)));
+        const c = cs.find((x) => x.id === Number(id.slice(2)));
         if (c) setPicked({ kind: "contact", contact: c });
       } else {
-        setPicked({ kind: id.split(":")[0] as "org" | "issue" | "owner", label: e.target.data("label"), members: graph.hubs.get(id) ?? [] });
+        setPicked({ kind: id.split(":")[0] as "org" | "issue" | "owner", label: e.target.data("label"), members: g.hubs.get(id) ?? [] });
       }
       highlight(instance, e.target);
+      zoomTo(instance, e.target.closedNeighborhood().closedNeighborhood());
     });
     instance.on("tap", (e) => {
       if (e.target === instance) {
@@ -143,9 +173,57 @@ export default function Network() {
         setPicked(null);
       }
     });
+    // Double-tap or double-click empty space to zoom in there.
+    instance.on("dbltap", (e) => {
+      if (e.target === instance) zoomBy(instance, 1.8, e.renderedPosition);
+    });
+    // Scroll-wheel and trackpad zoom. The library shrinks each mouse-wheel notch to a tiny
+    // step (it treats fixed-size notches as a coarse device), so a mouse needed dozens of
+    // notches. This zooms by how far you actually scroll: about 20% per notch, smooth on a
+    // trackpad, and faster for a trackpad pinch (which browsers report as Ctrl + scroll).
+    // Touch pinch on phones is not a wheel event and stays with the library.
+    const wrap = box.current.parentElement!;
+    const onWheel = (ev: WheelEvent) => {
+      ev.preventDefault();
+      ev.stopPropagation();
+      const unit = ev.deltaMode === 1 ? 40 : ev.deltaMode === 2 ? 800 : 1;
+      const rate = ev.ctrlKey ? 0.01 : 0.0018;
+      const level = Math.min(instance.maxZoom(), Math.max(instance.minZoom(), instance.zoom() * Math.exp(-ev.deltaY * unit * rate)));
+      const rect = box.current!.getBoundingClientRect();
+      instance.zoom({ level, renderedPosition: { x: ev.clientX - rect.left, y: ev.clientY - rect.top } });
+    };
+    wrap.addEventListener("wheel", onWheel, { capture: true, passive: false });
+    // Labels are sized in map units, so they grow as you zoom in until organization names
+    // swamp the people around them. Past a point, shrink the map-unit size so on-screen text
+    // stops growing: about 14 px for organizations and issues, 12 px for people.
+    let frame = 0;
+    const sizeLabels = () => {
+      frame = 0;
+      const z = instance.zoom();
+      instance.style()
+        .selector("node").style("font-size", Math.min(10, 12 / z))
+        .selector('node[kind = "org"]').style("font-size", Math.min(20, 14 / z))
+        .selector('node[kind = "issue"]').style("font-size", Math.min(18, 14 / z))
+        .selector('node[kind = "owner"]').style("font-size", Math.min(22, 15 / z))
+        .selector("node.hit").style("font-size", Math.min(14, 14 / z))
+        .update();
+    };
+    instance.on("zoom", () => {
+      frame ||= requestAnimationFrame(sizeLabels);
+    });
+    sizeLabels();
     cy.current = instance;
-    return () => instance.destroy();
-  }, [graph, contacts]);
+    return () => {
+      cancelAnimationFrame(frame);
+      wrap.removeEventListener("wheel", onWheel, { capture: true });
+      saved.current = {
+        positions: new Map(instance.nodes().map((n) => [n.id(), { ...n.position() }])),
+        zoom: instance.zoom(),
+        pan: { ...instance.pan() },
+      };
+      instance.destroy();
+    };
+  }, [graphKey]);
 
   // Focus a contact passed in the URL (from a contact page) once the graph exists.
   useEffect(() => {
@@ -153,11 +231,11 @@ export default function Network() {
     const node = cy.current.getElementById(`c:${focus}`);
     if (node.nonempty()) {
       highlight(cy.current, node);
-      cy.current.animate({ fit: { eles: node.closedNeighborhood().closedNeighborhood(), padding: 60 } }, { duration: 300 });
-      const c = contacts.find((x) => x.id === Number(focus));
+      zoomTo(cy.current, node.closedNeighborhood().closedNeighborhood());
+      const c = latest.current.contacts.find((x) => x.id === Number(focus));
       if (c) setPicked({ kind: "contact", contact: c });
     }
-  }, [focus, graph, contacts]);
+  }, [focus, graphKey]);
 
   const search = (q: string) => {
     setQuery(q);
@@ -170,7 +248,7 @@ export default function Network() {
     inst.elements().addClass("faded");
     hits.closedNeighborhood().removeClass("faded");
     hits.addClass("hit");
-    inst.animate({ fit: { eles: hits.closedNeighborhood(), padding: 60 } }, { duration: 300 });
+    zoomTo(inst, hits.closedNeighborhood());
   };
 
   const toggleLayer = (l: Layer) =>
@@ -221,6 +299,12 @@ export default function Network() {
 
       <div className="graph-wrap">
         <div ref={box} className="graph" />
+        <div className="zoom-controls" role="group" aria-label="Zoom">
+          <button onClick={() => cy.current && zoomBy(cy.current, 1.5)} aria-label="Zoom in" title="Zoom in">+</button>
+          <button onClick={() => cy.current && zoomBy(cy.current, 1 / 1.5)} aria-label="Zoom out" title="Zoom out">−</button>
+          <button onClick={() => cy.current?.animate({ fit: { eles: cy.current.elements(), padding: 30 } }, { duration: 300 })} aria-label="Show everything" title="Show everything">⤢</button>
+        </div>
+        <div className="graph-hint">Scroll or pinch to zoom · drag to move · tap a dot to focus</div>
         {nodeCount === 0 && <div className="graph-empty">Nothing to draw. Turn on a “Connect by” option or “Unconnected people”.</div>}
         {picked && (
           <aside className="graph-panel">
@@ -251,6 +335,23 @@ export default function Network() {
       </div>
     </div>
   );
+}
+
+/** Zoom by `factor`, keeping the given screen point (default: the middle) where it is. */
+function zoomBy(cy: Core, factor: number, at?: cytoscape.Position) {
+  const level = Math.min(cy.maxZoom(), Math.max(cy.minZoom(), cy.zoom() * factor));
+  const renderedPosition = at ?? { x: cy.width() / 2, y: cy.height() / 2 };
+  cy.animate({ zoom: { level, renderedPosition } } as cytoscape.AnimateOptions, { duration: 200 });
+}
+
+/** Fit the view to `eles`, without zooming in so far that a small group fills the screen. */
+function zoomTo(cy: Core, eles: cytoscape.CollectionReturnValue) {
+  const box = eles.boundingBox();
+  const pad = 60;
+  const fitZoom = Math.min((cy.width() - pad * 2) / Math.max(box.w, 1), (cy.height() - pad * 2) / Math.max(box.h, 1));
+  const zoom = Math.max(cy.minZoom(), Math.min(fitZoom, 2));
+  const pan = { x: cy.width() / 2 - zoom * (box.x1 + box.w / 2), y: cy.height() / 2 - zoom * (box.y1 + box.h / 2) };
+  cy.animate({ zoom, pan }, { duration: 300 });
 }
 
 function highlight(cy: Core, node: cytoscape.NodeSingular | cytoscape.CollectionReturnValue) {

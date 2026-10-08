@@ -228,6 +228,17 @@ input.scanned { background: #f0f7ff; border-color: #9fbef0; }
 .layer-personal.on { background: #d1497b; border-color: #d1497b; }
 .graph-wrap { position: relative; background: #fff; border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
 .graph { width: 100%; height: calc(100vh - 290px); min-height: 380px; }
+.zoom-controls {
+  position: absolute; left: 10px; top: 10px; display: flex; flex-direction: column; background: #fff;
+  border: 1px solid var(--line); border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px rgba(20, 30, 50, 0.1);
+}
+.zoom-controls button {
+  width: 40px; height: 40px; border: 0; border-bottom: 1px solid var(--line); background: #fff; font-size: 1.2rem;
+  cursor: pointer; color: var(--ink);
+}
+.zoom-controls button:last-child { border-bottom: 0; }
+.zoom-controls button:hover { background: #f1f4f9; }
+.graph-hint { position: absolute; left: 10px; bottom: 8px; font-size: 0.75rem; color: var(--muted); pointer-events: none; }
 .graph-empty { position: absolute; inset: 0; display: grid; place-items: center; color: var(--muted); padding: 20px; text-align: center; }
 .graph-panel {
   position: absolute; right: 10px; top: 10px; width: 260px; max-width: calc(100% - 20px); max-height: calc(100% - 20px); overflow: auto;
