@@ -1,0 +1,7 @@
+{
+  "tenantId": "YOUR-DIRECTORY-TENANT-ID",
+  "clientId": "YOUR-APPLICATION-CLIENT-ID",
+  "folderUrl": "https://YOURORG-my.sharepoint.com/:f:/g/personal/...",
+  "workbookName": "FSI_Relationship_Tracker_10.6.26_FINAL.xlsx",
+  "setupAdmins": ["you@yourorg.org"]
+}

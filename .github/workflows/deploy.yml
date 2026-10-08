@@ -1,0 +1,72 @@
+name: Deploy to GitHub Pages
+
+# Publishes the app to https://<owner>.github.io/<repo>/ on every push to main.
+# Needs, under Settings > Secrets and variables > Actions > Variables:
+#   TRACKER_TENANT_ID, TRACKER_CLIENT_ID, TRACKER_FOLDER_URL
+#   TRACKER_WORKBOOK_NAME (optional), TRACKER_SETUP_ADMINS (optional, comma-separated)
+# and Settings > Pages > Source set to "GitHub Actions".
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Let a running deploy finish; queue at most one more.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - name: Write config.json from repository variables
+        env:
+          TENANT: ${{ vars.TRACKER_TENANT_ID }}
+          CLIENT: ${{ vars.TRACKER_CLIENT_ID }}
+          FOLDER: ${{ vars.TRACKER_FOLDER_URL }}
+          BOOK: ${{ vars.TRACKER_WORKBOOK_NAME }}
+          ADMINS: ${{ vars.TRACKER_SETUP_ADMINS }}
+        run: |
+          node -e '
+            const e = process.env;
+            if (!e.TENANT || !e.CLIENT || !e.FOLDER) {
+              console.error("Set the TRACKER_TENANT_ID, TRACKER_CLIENT_ID and TRACKER_FOLDER_URL repository variables.");
+              process.exit(1);
+            }
+            const cfg = { tenantId: e.TENANT.trim(), clientId: e.CLIENT.trim(), folderUrl: e.FOLDER.trim() };
+            if (e.BOOK) cfg.workbookName = e.BOOK.trim();
+            if (e.ADMINS) cfg.setupAdmins = e.ADMINS.split(",").map((s) => s.trim()).filter(Boolean);
+            require("fs").writeFileSync("public/config.json", JSON.stringify(cfg, null, 2));
+          '
+      - name: Build
+        # Pages serves the site from /<repo>/, so the app must be built for that subpath.
+        run: BASE_PATH="/${GITHUB_REPOSITORY#*/}/" npm run build
+      - name: Serve the app for deep links
+        # GitHub Pages has no rewrite rules; its 404 page loading the app lets a refresh on
+        # /contacts/12 (or a shared link to it) still open the right screen.
+        run: cp dist/index.html dist/404.html
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
