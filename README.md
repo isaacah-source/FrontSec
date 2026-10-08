@@ -145,6 +145,20 @@ automatically. Afterwards, use that folder's sharing link as `folderUrl`.
 - **Owner names.** Two contacts list the owner as "Ike". The app treats a lone first name as
   matching the person with that first name, but "Ike Harris" in full is clearer.
 
+## Installing on a phone
+
+**Android (Chrome):** open the app's address, sign in, then tap the **⋮** menu and choose
+**Install app** (on some phones, **Add to Home screen**, then **Install**). The app gets its own
+icon and opens full screen without the browser bar. The icon adapts to your phone's icon shape,
+and on Android 13 or newer it follows themed icons if you have them turned on.
+
+**iPhone (Safari):** open the app's address, tap the **Share** button, then **Add to Home Screen**.
+
+The icons use the Frontier Security Institute mark. `icon-src/logo.svg` is a vector redraw of
+`icon-src/logo-original.png`, and `icon-src/make-icons.mjs` turns it into every icon size in
+`public/icons`. To change the icon, edit or replace `logo.svg` (keep its 103 x 93 shape, or
+update `LOGO_W` and `LOGO_H` in the script) and run `node icon-src/make-icons.mjs`.
+
 ## Relationship types
 
 The app offers these types: Fellows, Advisors, Board, AI Labs, Media, Policy/NatSec/Gov,
