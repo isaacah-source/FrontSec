@@ -1,0 +1,8 @@
+node_modules/
+dist/
+*.xlsx
+*.tsbuildinfo
+public/tesseract/
+public/config.json
+public/demo-seed.json
+
