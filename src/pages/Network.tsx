@@ -21,6 +21,29 @@ const TYPE_COLORS: Record<string, string> = {
   "International Gov/Diplomatic": "#1aa6b7",
 };
 const OTHER = "#8a94a6";
+/** Line colors. Personal links use a red no contact type uses, so they read as lines, not people. */
+const LINE = { org: "#b5bfcd", issue: "#e3b341", owner: "#7f95b8", personal: "#e03131" };
+
+/**
+ * fcose settings. Counting labels in each node's size is what keeps names and organization
+ * titles from landing on top of each other; the rest spreads groups apart.
+ */
+const LAYOUT = {
+  name: "fcose",
+  quality: "proof",
+  animate: false,
+  nodeDimensionsIncludeLabels: true,
+  nodeRepulsion: 12000,
+  idealEdgeLength: 90,
+  edgeElasticity: 0.3,
+  nodeSeparation: 90,
+  gravity: 0.2,
+  numIter: 3000,
+  packComponents: true,
+  tile: true,
+  tilingPaddingVertical: 40,
+  tilingPaddingHorizontal: 40,
+};
 
 type Layer = "org" | "issue" | "owner" | "personal";
 type Picked = { kind: "contact"; contact: Contact } | { kind: "org" | "issue" | "owner"; label: string; members: Contact[] };
@@ -83,15 +106,16 @@ export function buildGraph(
 const STYLE: cytoscape.StylesheetJson = [
   // Labels shrink with the zoom and are hidden below 8 px on screen, so organization and issue
   // names (larger) stay readable from the overview and people's names appear as you zoom in.
-  { selector: "node", style: { label: "data(label)", "font-size": 10, color: "#2b3445", "text-valign": "bottom", "text-margin-y": 3, "min-zoomed-font-size": 8 } },
-  { selector: 'node[kind = "contact"]', style: { "background-color": "data(color)", width: 14, height: 14 } },
-  { selector: 'node[kind = "org"]', style: { shape: "round-rectangle", "background-color": "#dfe6f1", "border-color": "#5b6b86", "border-width": 1.5, width: "data(size)", height: "data(size)", "font-weight": "bold", "font-size": 20 } },
+  { selector: "node", style: { label: "data(label)", "font-size": 10, color: "#2b3445", "text-valign": "bottom", "text-margin-y": 3, "min-zoomed-font-size": 8, "text-wrap": "wrap", "text-max-width": "140px" } },
+  // People's names appear once zoomed in far enough to read them; the overview shows groups.
+  { selector: 'node[kind = "contact"]', style: { "background-color": "data(color)", width: 14, height: 14, "min-zoomed-font-size": 11, "text-max-width": "90px" } },
+  { selector: 'node[kind = "org"]', style: { shape: "round-rectangle", "background-color": "#dfe6f1", "border-color": "#5b6b86", "border-width": 1.5, width: "data(size)", height: "data(size)", "font-weight": "bold", "font-size": 20, "text-background-color": "#fff", "text-background-opacity": 0.75, "text-background-padding": "1px" } },
   { selector: 'node[kind = "issue"]', style: { shape: "diamond", "background-color": "#fdf0d5", "border-color": "#b98a1b", "border-width": 1.5, width: "data(size)", height: "data(size)", "font-size": 18 } },
   { selector: 'node[kind = "owner"]', style: { shape: "star", "background-color": "#1f3a5f", width: "data(size)", height: "data(size)", "font-weight": "bold", "font-size": 22 } },
-  { selector: "edge", style: { width: 1, "line-color": "#c7cfdb", "curve-style": "haystack", opacity: 0.8 } },
-  { selector: 'edge[kind = "issue"]', style: { "line-color": "#e9cf8f" } },
-  { selector: 'edge[kind = "owner"]', style: { "line-color": "#9fb1cc", "line-style": "dashed" } },
-  { selector: 'edge[kind = "personal"]', style: { width: 2.5, "line-color": "#d1497b", "curve-style": "bezier", label: "data(label)", "font-size": 7, color: "#a33a62", "text-rotation": "autorotate" } },
+  { selector: "edge", style: { width: 1, "line-color": LINE.org, "curve-style": "haystack", opacity: 0.8 } },
+  { selector: 'edge[kind = "issue"]', style: { "line-color": LINE.issue } },
+  { selector: 'edge[kind = "owner"]', style: { "line-color": LINE.owner, "line-style": "dashed" } },
+  { selector: 'edge[kind = "personal"]', style: { width: 2.5, "line-color": LINE.personal, "curve-style": "bezier", label: "data(label)", "font-size": 7, color: "#a61e1e", "text-rotation": "autorotate", "min-zoomed-font-size": 9 } },
   { selector: ".faded", style: { opacity: 0.12 } },
   { selector: "node.hit", style: { "border-width": 3, "border-color": "#111", "font-weight": "bold", "font-size": 14, "min-zoomed-font-size": 0, "z-index": 10, "text-background-color": "#fff", "text-background-opacity": 0.9, "text-background-padding": "2px", "text-background-shape": "roundrectangle" } },
 ];
@@ -108,7 +132,25 @@ export default function Network() {
   const [isolated, setIsolated] = useState(false);
   const [query, setQuery] = useState("");
   const [picked, setPicked] = useState<Picked | null>(null);
+  const [full, setFull] = useState(false);
   const focus = params.get("focus");
+
+  // Full screen: the map fills the window. Esc or the button returns.
+  useEffect(() => {
+    const inst = cy.current;
+    if (inst) {
+      inst.resize();
+      inst.fit(undefined, 30);
+    }
+    if (!full) return;
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setFull(false);
+    document.addEventListener("keydown", onKey);
+    document.body.classList.add("no-scroll");
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      document.body.classList.remove("no-scroll");
+    };
+  }, [full]);
 
   const visible = useMemo(
     () => contacts.filter((c) => (!types.size || contactTypes(c).some((t) => types.has(t))) && (!status || c.status === status)),
@@ -149,10 +191,10 @@ export default function Network() {
       known.forEach((n) => {
         n.position(prev.positions.get(n.id())!);
       });
-      instance.layout({ name: "fcose", animate: false, randomize: false, fixedNodeConstraint: known.map((n) => ({ nodeId: n.id(), position: (n as cytoscape.NodeSingular).position() })) } as cytoscape.LayoutOptions).run();
+      instance.layout({ ...LAYOUT, randomize: false, fixedNodeConstraint: known.map((n) => ({ nodeId: n.id(), position: (n as cytoscape.NodeSingular).position() })) } as cytoscape.LayoutOptions).run();
       instance.viewport({ zoom: prev.zoom, pan: prev.pan });
     } else {
-      instance.layout({ name: "fcose", animate: false, nodeRepulsion: 6000, idealEdgeLength: 70, packComponents: true } as cytoscape.LayoutOptions).run();
+      instance.layout(LAYOUT as cytoscape.LayoutOptions).run();
       instance.fit(undefined, 30);
     }
 
@@ -269,6 +311,20 @@ export default function Network() {
 
   const nodeCount = graph.elements.filter((e) => !e.data.source).length;
 
+  const keys = (
+    <div className="keys">
+      <div className="legend">
+          {typeOptions(contacts).map((t) => (
+            <button key={t} className={`legend-item ${types.size && !types.has(t) ? "off" : ""}`} onClick={() => toggleType(t)}>
+              <i style={{ background: TYPE_COLORS[t] ?? OTHER }} />{t}
+            </button>
+          ))}
+          {types.size > 0 && <button className="linkish small" onClick={() => setTypes(new Set())}>All types</button>}
+        </div>
+      <LineKey layers={layers} />
+    </div>
+  );
+
   return (
     <div className="page network-page">
       <header className="page-head">
@@ -289,21 +345,21 @@ export default function Network() {
         <label className="small"><input type="checkbox" checked={isolated} onChange={(e) => setIsolated(e.target.checked)} /> Unconnected people</label>
         {focus && <button className="chip" onClick={() => setParams({})}>Clear focus ✕</button>}
       </div>
-      <div className="legend">
-        {typeOptions(contacts).map((t) => (
-          <button key={t} className={`legend-item ${types.size && !types.has(t) ? "off" : ""}`} onClick={() => toggleType(t)}>
-            <i style={{ background: TYPE_COLORS[t] ?? OTHER }} />{t}
-          </button>
-        ))}
-        {types.size > 0 && <button className="linkish small" onClick={() => setTypes(new Set())}>All types</button>}
-      </div>
+      {!full && keys}
 
-      <div className="graph-wrap">
+      <div className={`graph-wrap${full ? " full" : ""}`}>
+        {full && (
+          <div className="full-bar">
+            {keys}
+            <button className="btn small" onClick={() => setFull(false)}>Exit full screen</button>
+          </div>
+        )}
         <div ref={box} className="graph" />
         <div className="zoom-controls" role="group" aria-label="Zoom">
           <button onClick={() => cy.current && zoomBy(cy.current, 1.5)} aria-label="Zoom in" title="Zoom in">+</button>
           <button onClick={() => cy.current && zoomBy(cy.current, 1 / 1.5)} aria-label="Zoom out" title="Zoom out">−</button>
-          <button onClick={() => cy.current?.animate({ fit: { eles: cy.current.elements(), padding: 30 } }, { duration: 300 })} aria-label="Show everything" title="Show everything">⤢</button>
+          <button onClick={() => cy.current?.animate({ fit: { eles: cy.current.elements(), padding: 30 } }, { duration: 300 })} aria-label="Fit everything on screen" title="Fit everything on screen" className="fit">Fit</button>
+          <button onClick={() => setFull((f) => !f)} aria-label={full ? "Exit full screen" : "Full screen"} title={full ? "Exit full screen (Esc)" : "Full screen"}>{full ? "✕" : "⤢"}</button>
         </div>
         <div className="graph-hint">Scroll or pinch to zoom · drag to move · tap a dot to focus</div>
         {nodeCount === 0 && <div className="graph-empty">Nothing to draw. Turn on a “Connect by” option or “Unconnected people”.</div>}
@@ -361,4 +417,31 @@ function highlight(cy: Core, node: cytoscape.NodeSingular | cytoscape.Collection
   // Two hops from a person reaches the people they share an org, issue, or owner with.
   hood.closedNeighborhood().removeClass("faded");
   node.addClass("hit");
+}
+
+/** What the lines and hub shapes mean, for the layers currently drawn. */
+function LineKey({ layers }: { layers: Set<Layer> }) {
+  const items: [Layer, string, string][] = [
+    ["org", "Same organization", "Organization"],
+    ["issue", "Shared issue", "Issue"],
+    ["owner", "Same FSI relationship owner", "Relationship owner"],
+    ["personal", "Who knows who (personal connection)", ""],
+  ];
+  const shown = items.filter(([l]) => layers.has(l));
+  if (!shown.length) return null;
+  return (
+    <div className="legend line-key">
+      <span className="muted small">Lines:</span>
+      {shown.map(([l, label]) => (
+        <span key={l} className="legend-item static">
+          <i className={`line line-${l}`} style={{ borderTopColor: LINE[l] }} />{label}
+        </span>
+      ))}
+      <span className="muted small">Shapes:</span>
+      <span className="legend-item static"><i className="dot" />Person (color = type)</span>
+      {shown.filter(([, , hub]) => hub).map(([l, , hub]) => (
+        <span key={l} className="legend-item static"><i className={`hub hub-${l}`} />{hub}</span>
+      ))}
+    </div>
+  );
 }
