@@ -1,12 +1,18 @@
-import { cellText, parseMaster } from "./repo";
+import { cellDate, cellText, parseMaster, updatableField } from "./repo";
 import type { Cell } from "./sheets";
-import { normalizeConnectionKind, type Contact } from "../../shared/constants";
+import { INTERACTION_TYPES, normalizeConnectionKind, type Contact, type Interaction } from "../../shared/constants";
 
 /**
  * Turns a spreadsheet of contacts into an import plan. The contacts tab uses the same
  * headers as Master (so a copy of Master, or the Outlook-sweep file, both work); an
  * optional Connections tab uses the tracker's Connections headers. Unique IDs in the file
  * only link its own rows together; the tracker gives every imported contact a new ID.
+ *
+ * Two more optional tabs carry news about people already in the tracker (the weekly email
+ * sweep writes them):
+ * - Updates: Unique ID, Name, Field (a Master heading), New value, Source.
+ * - Touchpoints: Contact ID, Contact, Date, Type, Summary. The Contact ID may also be the
+ *   file ID of a row on the contacts tab.
  */
 
 export interface SheetIn {
@@ -31,12 +37,36 @@ export interface ImportLink {
 /** One side of a connection: a row being imported, or a contact already in the tracker. */
 export type End = { fileId: number; name: string } | { trackerId: number; name: string };
 
+export interface ImportUpdate {
+  key: string;
+  contact: Contact;
+  field: keyof Contact;
+  label: string;
+  value: string | boolean | null;
+  current: string | boolean | null;
+  source: string | null;
+}
+
+export interface ImportTouch {
+  key: string;
+  who: End;
+  date: string;
+  type: string;
+  summary: string;
+  /** A touchpoint on the same day with the same summary is already logged. */
+  duplicate: boolean;
+}
+
 export interface ImportPlan {
-  sheetName: string;
+  sheetName: string | null;
   rows: ImportRow[];
   links: ImportLink[];
   /** Connections that name someone in neither the file nor the tracker. */
   unmatchedLinks: number;
+  updates: ImportUpdate[];
+  touches: ImportTouch[];
+  /** Update or touchpoint rows whose contact could not be found, or whose value is already current. */
+  skippedNews: number;
 }
 
 const key = (s: string | null | undefined) => (s ?? "").toLowerCase().replace(/\(.*?\)/g, "").replace(/[^a-z]/g, "");
@@ -53,21 +83,11 @@ function headerOf(s: SheetIn): string[] {
   return (s.data[0] ?? []).map((h) => String(h ?? "").trim().toLowerCase());
 }
 
-export function planImport(sheets: SheetIn[], existing: Contact[]): ImportPlan {
-  const looksLikeContacts = (s: SheetIn) => {
-    const h = headerOf(s);
-    return h.includes("name") && (h.includes("organization") || h.includes("email"));
-  };
-  const sheet = sheets.find((s) => s.sheet.toLowerCase() === "new contacts" && looksLikeContacts(s))
-    ?? sheets.find((s) => s.sheet.toLowerCase() === "master" && looksLikeContacts(s))
-    ?? sheets.find(looksLikeContacts);
-  if (!sheet) throw new Error('No tab in this file has a "Name" column next to "Organization" or "Email". Use the Master tab layout.');
-
+function contactRows(sheet: SheetIn, existing: Contact[]): ImportRow[] {
   const byEmail = new Map(existing.filter((c) => c.email).map((c) => [c.email!.toLowerCase(), c]));
   const byName = new Map(existing.map((c) => [key(c.name), c]));
   const seenEmail = new Map<string, string>();
   const seenName = new Map<string, string>();
-
   // A row with an email but no name still comes in, named by its email, so nobody is
   // silently dropped; the name can be fixed afterwards.
   const cells = toCells(sheet.data);
@@ -77,7 +97,7 @@ export function planImport(sheets: SheetIn[], existing: Contact[]): ImportPlan {
   for (const r of cells.slice(1)) {
     if (!cellText(r[nameAt] ?? null) && emailAt >= 0 && cellText(r[emailAt] ?? null)) r[nameAt] = cellText(r[emailAt])!;
   }
-  const rows: ImportRow[] = parseMaster(cells).contacts.map(({ row: _row, id, updatedAt: _u, updatedBy: _b, ...c }) => {
+  return parseMaster(cells).contacts.map(({ row: _row, id, updatedAt: _u, updatedBy: _b, ...c }) => {
     const email = c.email?.toLowerCase() ?? "";
     const name = key(c.name);
     let duplicateOf: ImportRow["duplicateOf"] = null;
@@ -89,7 +109,27 @@ export function planImport(sheets: SheetIn[], existing: Contact[]): ImportPlan {
     if (name) seenName.set(name, c.name);
     return { fileId: id, contact: c, duplicateOf };
   });
+}
 
+export function planImport(sheets: SheetIn[], existing: Contact[], logged: Interaction[] = []): ImportPlan {
+  const looksLikeContacts = (s: SheetIn) => {
+    const h = headerOf(s);
+    return h.includes("name") && (h.includes("organization") || h.includes("email"));
+  };
+  const sheet = sheets.find((s) => s.sheet.toLowerCase() === "new contacts" && looksLikeContacts(s))
+    ?? sheets.find((s) => s.sheet.toLowerCase() === "master" && looksLikeContacts(s))
+    ?? sheets.find(looksLikeContacts);
+  const updatesTab = sheets.find((s) => s.sheet.trim().toLowerCase() === "updates");
+  const touchTab = sheets.find((s) => s.sheet.trim().toLowerCase() === "touchpoints");
+  if (!sheet && !updatesTab && !touchTab) {
+    throw new Error('No tab in this file has a "Name" column next to "Organization" or "Email". Use the Master tab layout.');
+  }
+
+  const byName = new Map(existing.map((c) => [key(c.name), c]));
+  const byId = new Map(existing.map((c) => [c.id, c]));
+
+  let rows: ImportRow[] = [];
+  if (sheet) rows = contactRows(sheet, existing);
   const links: ImportLink[] = [];
   let unmatchedLinks = 0;
   const conn = sheets.find((s) => s !== sheet && headerOf(s).includes("contact a id") && headerOf(s).includes("contact b id"));
@@ -97,7 +137,6 @@ export function planImport(sheets: SheetIn[], existing: Contact[]): ImportPlan {
     const h = headerOf(conn);
     const at = (name: string) => h.indexOf(name);
     const fileRows = new Map(rows.map((r) => [r.fileId, r]));
-    const byId = new Map(existing.map((c) => [c.id, c]));
     const end = (idCell: unknown, nameCell: unknown): End | null => {
       const id = Number(idCell);
       const name = cellText(nameCell as Cell) ?? "";
@@ -127,5 +166,64 @@ export function planImport(sheets: SheetIn[], existing: Contact[]): ImportPlan {
       });
     }
   }
-  return { sheetName: sheet.sheet, rows, links, unmatchedLinks };
+
+  // News about people already in the tracker. The ID must point at the same name, so a
+  // row cannot land on the wrong person if IDs shifted.
+  let skippedNews = 0;
+  const tracker = (idCell: unknown, nameCell: unknown): Contact | null => {
+    const c = byId.get(Number(idCell));
+    const name = cellText(nameCell as Cell);
+    return c && (!name || key(c.name) === key(name)) ? c : null;
+  };
+  const updates: ImportUpdate[] = [];
+  if (updatesTab) {
+    const h = headerOf(updatesTab);
+    const at = (n: string) => h.indexOf(n);
+    updatesTab.data.slice(1).forEach((r, i) => {
+      if (!r.some((v) => v !== null && v !== "")) return;
+      const c = tracker(r[at("unique id")], r[at("name")]);
+      const f = updatableField(String(r[at("field")] ?? ""));
+      if (!c || !f) {
+        skippedNews++;
+        return;
+      }
+      const raw = r[at("new value")];
+      const value = f.flag ? /^(y|yes|true|1)$/i.test(String(raw ?? "")) : f.date ? cellDate(toCells([[raw]])[0][0]) : cellText(toCells([[raw]])[0][0]);
+      const current = c[f.field] as string | boolean | null;
+      if (value === current || (typeof value === "string" && typeof current === "string" && value.toLowerCase() === current.toLowerCase())) {
+        skippedNews++;
+        return;
+      }
+      updates.push({ key: `u${i}`, contact: c, field: f.field, label: f.label, value, current, source: at("source") >= 0 ? cellText(r[at("source")] as Cell) : null });
+    });
+  }
+
+  const touches: ImportTouch[] = [];
+  if (touchTab) {
+    const h = headerOf(touchTab);
+    const at = (n: string) => h.indexOf(n);
+    const fileRows = new Map(rows.map((r) => [r.fileId, r]));
+    touchTab.data.slice(1).forEach((r, i) => {
+      if (!r.some((v) => v !== null && v !== "")) return;
+      const id = Number(r[at("contact id")]);
+      const name = cellText(r[at("contact")] as Cell) ?? "";
+      const date = cellDate(toCells([[r[at("date")]]])[0][0]);
+      const summary = cellText(r[at("summary")] as Cell);
+      const inFile = fileRows.get(id);
+      const c = inFile ? null : tracker(id, name);
+      if ((!inFile && !c) || !date || !summary) {
+        skippedNews++;
+        return;
+      }
+      const t = cellText(r[at("type")] as Cell) ?? "Email";
+      const type = (INTERACTION_TYPES as readonly string[]).find((x) => x.toLowerCase() === t.toLowerCase()) ?? "Other";
+      const who: End = inFile
+        ? inFile.duplicateOf?.id ? { trackerId: inFile.duplicateOf.id, name: inFile.duplicateOf.name } : { fileId: id, name: inFile.contact.name ?? name }
+        : { trackerId: c!.id, name: c!.name };
+      const duplicate = "trackerId" in who && logged.some((x) => x.contactId === who.trackerId && x.date === date && x.summary.trim() === summary.trim());
+      touches.push({ key: `t${i}`, who, date, type, summary, duplicate });
+    });
+  }
+
+  return { sheetName: sheet?.sheet ?? null, rows, links, unmatchedLinks, updates, touches, skippedNews };
 }

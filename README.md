@@ -33,7 +33,10 @@ Works in any browser on a laptop or phone, and can be added to a phone's home sc
 - **Import.** Editors and admins can add many contacts from an Excel file laid out like
   Master (for example the Outlook-sweep file). The app shows every row first, unticks people
   already in the tracker, gives each new contact a fresh Unique ID, and imports a
-  Connections tab if the file has one.
+  Connections tab if the file has one. Files from the weekly email sweep can also carry an
+  **Updates** tab (new title, organization, office, phone, and so on for existing contacts)
+  and a **Touchpoints** tab (email exchanges to log); each row is shown with a checkbox
+  before anything is saved.
 - **Office / department.** Each contact can name the office, department or committee
   within their organization (an **Office / Department** column on Master). The network map
   draws each organization as a box holding its people, with a dashed box per office.
