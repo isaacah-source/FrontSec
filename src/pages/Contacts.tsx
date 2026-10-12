@@ -2,16 +2,27 @@ import { useMemo, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { addDays, can, errorText, formatDate, isOwner, today, useStore } from "../lib/store";
 import { Empty, FollowUp, StatusBadge, initials } from "../components/ui";
-import { RELATIONSHIP_TYPES as RELATIONSHIP_TYPE_CHOICES, STATUSES, splitIssues, typeOptions, type Contact, type User } from "../../shared/constants";
+import { RELATIONSHIP_TYPES as RELATIONSHIP_TYPE_CHOICES, STATUSES, contactTypes, splitIssues, typeOptions, type Contact, type User } from "../../shared/constants";
 
-type SortKey = "name" | "organization" | "status" | "owner" | "lastContact" | "nextFollowUp";
+type SortKey = "name" | "organization" | "status" | "owner" | "lastContact" | "nextFollowUp" | "dateAdded";
+
+/** Choices for the Sort menu (the table headers sort too). "added" is newest first. */
+const SORTS: { value: string; label: string; key: SortKey; dir: 1 | -1 }[] = [
+  { value: "name", label: "Name A–Z", key: "name", dir: 1 },
+  { value: "added", label: "Date added (newest first)", key: "dateAdded", dir: -1 },
+  { value: "added-old", label: "Date added (oldest first)", key: "dateAdded", dir: 1 },
+  { value: "org", label: "Organization", key: "organization", dir: 1 },
+  { value: "last", label: "Last contact (recent first)", key: "lastContact", dir: -1 },
+  { value: "follow", label: "Follow-up (soonest first)", key: "nextFollowUp", dir: 1 },
+];
 
 export default function Contacts() {
   const { me, contacts, users, toast, mutate, links } = useStore();
   const [params, setParams] = useSearchParams();
   const navigate = useNavigate();
   const [selected, setSelected] = useState<Set<number>>(new Set());
-  const [sort, setSort] = useState<{ key: SortKey; dir: 1 | -1 }>({ key: "name", dir: 1 });
+  const initialSort = SORTS.find((s) => s.value === params.get("sort")) ?? SORTS[0];
+  const [sort, setSort] = useState<{ key: SortKey; dir: 1 | -1 }>({ key: initialSort.key, dir: initialSort.dir });
   const [busy, setBusy] = useState(false);
 
   const q = params.get("q") ?? "";
@@ -40,7 +51,7 @@ export default function Contacts() {
     const week = addDays(t, 7);
     const terms = q.toLowerCase().split(/\s+/).filter(Boolean);
     const list = contacts.filter((c) => {
-      if (type && c.relationshipType !== type) return false;
+      if (type && !contactTypes(c).includes(type)) return false;
       if (status && c.status !== status) return false;
       if (owner === "none" && c.owner) return false;
       if (owner === "me" && !isOwner(me, c)) return false;
@@ -64,10 +75,17 @@ export default function Contacts() {
         default: return (c[sort.key] ?? "\uffff") as string;
       }
     };
-    return list.sort((a, b) => val(a).localeCompare(val(b), undefined, { sensitivity: "base" }) * sort.dir);
+    return list.sort((a, b) => {
+      const x = val(a);
+      const y = val(b);
+      // Blank dates and names stay at the bottom whichever way the column is sorted.
+      if ((x === "\uffff") !== (y === "\uffff")) return x === "\uffff" ? 1 : -1;
+      return x.localeCompare(y, undefined, { sensitivity: "base" }) * sort.dir || a.name.localeCompare(b.name);
+    });
   }, [contacts, q, type, status, owner, due, issue, org, sort]);
 
-  const toggleSort = (key: SortKey) => setSort((s) => ({ key, dir: s.key === key ? (s.dir === 1 ? -1 : 1) : 1 }));
+  const toggleSort = (key: SortKey) => setSort((s) => ({ key, dir: s.key === key ? (s.dir === 1 ? -1 : 1) : key === "dateAdded" || key === "lastContact" ? -1 : 1 }));
+  const sortValue = SORTS.find((s) => s.key === sort.key && s.dir === sort.dir)?.value ?? "";
   const toggle = (id: number) =>
     setSelected((s) => {
       const n = new Set(s);
@@ -94,6 +112,27 @@ export default function Contacts() {
     toast(failed ? `${label}: ${failed} could not be changed.` : `${label} for ${selected.size} contacts.`);
   };
 
+  /** Adds a category without replacing the main one. */
+  const bulkAddType = async (t: string) => {
+    setBusy(true);
+    let failed = 0;
+    await mutate(async (repo) => {
+      for (const id of selected) {
+        const c = contacts.find((x) => x.id === id);
+        if (!c || contactTypes(c).includes(t)) continue;
+        try {
+          await repo.updateContact(id, c.relationshipType ? { otherTypes: [...contactTypes(c).slice(1), t].join("; ") } : { relationshipType: t });
+        } catch (e) {
+          failed++;
+          console.warn(errorText(e));
+        }
+      }
+    }).catch(() => {});
+    setBusy(false);
+    setSelected(new Set());
+    toast(failed ? `Add type: ${failed} could not be changed.` : `Added ${t} to ${selected.size} contacts.`);
+  };
+
   const bulkMode = can(me, "editor");
   const hasFilters = q || type || status || owner || due || issue || org;
   const owners = ownerNames(users, contacts);
@@ -111,6 +150,7 @@ export default function Contacts() {
         <h1>Contacts <span className="muted count">{filtered.length}</span></h1>
         <div className="head-actions">
           {links.workbookUrl && <a className="btn" href={links.workbookUrl} target="_blank" rel="noreferrer">Open in Excel</a>}
+          {can(me, "editor") && <Link className="btn" to="/import">Import</Link>}
           {can(me, "contributor") && <Link className="btn primary" to="/contacts/new">Add contact</Link>}
         </div>
       </header>
@@ -141,6 +181,13 @@ export default function Contacts() {
           <option value="">Any issue</option>
           {issues.map((i) => <option key={i}>{i}</option>)}
         </select>
+        <select value={sortValue} aria-label="Sort" onChange={(e) => {
+          const s = SORTS.find((x) => x.value === e.target.value);
+          if (s) setSort({ key: s.key, dir: s.dir });
+        }}>
+          {!sortValue && <option value="">Sorted by column</option>}
+          {SORTS.map((s) => <option key={s.value} value={s.value}>Sort: {s.label}</option>)}
+        </select>
         {org && <button className="chip" onClick={() => set("org", "")}>Org: {org} ✕</button>}
         {hasFilters && <button className="linkish" onClick={() => setParams({}, { replace: true })}>Clear</button>}
       </div>
@@ -163,6 +210,14 @@ export default function Contacts() {
             e.target.value = "";
           }}>
             <option value="">Set type…</option>
+            {RELATIONSHIP_TYPE_CHOICES.map((t) => <option key={t}>{t}</option>)}
+          </select>
+          <select disabled={busy} defaultValue="" onChange={(e) => {
+            const t = e.target.value;
+            e.target.value = "";
+            if (t) bulkAddType(t);
+          }}>
+            <option value="">Add type…</option>
             {RELATIONSHIP_TYPE_CHOICES.map((t) => <option key={t}>{t}</option>)}
           </select>
           <select disabled={busy} defaultValue="" onChange={(e) => {
@@ -201,6 +256,7 @@ export default function Contacts() {
                   <Th k="owner">Owner</Th>
                   <Th k="lastContact">Last contact</Th>
                   <Th k="nextFollowUp">Follow-up</Th>
+                  <Th k="dateAdded">Added</Th>
                 </tr>
               </thead>
               <tbody>
@@ -213,11 +269,12 @@ export default function Contacts() {
                     )}
                     <td className="strong">{c.name}{c.restricted && " 🔒"}</td>
                     <td>{c.organization}</td>
-                    <td className="small">{c.relationshipType}</td>
+                    <td className="small">{contactTypes(c).join(", ")}</td>
                     <td><StatusBadge status={c.status} /></td>
                     <td>{c.owner ?? <span className="muted">Unassigned</span>}</td>
                     <td className="small">{formatDate(c.lastContact)}</td>
                     <td className="small"><FollowUp date={c.nextFollowUp} /></td>
+                    <td className="small">{formatDate(c.dateAdded)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -230,7 +287,8 @@ export default function Contacts() {
                 <div className="avatar" aria-hidden>{initials(c.name)}</div>
                 <div className="grow">
                   <div className="row-title">{c.name}{c.restricted && " 🔒"}</div>
-                  <div className="muted small">{c.organization ?? c.relationshipType}</div>
+                  <div className="muted small">{c.organization ?? contactTypes(c).join(", ")}</div>
+                  {sort.key === "dateAdded" && <div className="muted small">Added {formatDate(c.dateAdded) || "date unknown"}</div>}
                   <div className="small"><StatusBadge status={c.status} /> {c.owner && <span className="muted">· {c.owner}</span>}</div>
                 </div>
                 {c.nextFollowUp && <span className="small"><FollowUp date={c.nextFollowUp} /></span>}

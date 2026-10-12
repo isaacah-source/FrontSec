@@ -12,7 +12,7 @@ import { RELATIONSHIP_TYPES, STATUSES, type Contact } from "../../shared/constan
 type Form = Record<string, string | boolean | number | null>;
 
 const BLANK: Form = {
-  name: "", title: "", organization: "", relationshipType: "", status: "Not yet engaged", owner: "",
+  name: "", title: "", organization: "", relationshipType: "", otherTypes: "", status: "Not yet engaged", owner: "",
   email: "", phone: "", geo: "", interestArea: "", tags: "", international: false, restricted: false,
   referredByName: "", referredByRole: "", lastContact: "", nextFollowUp: "", dateAdded: "", notes: "", linkedin: "", website: "", address: "",
 };
@@ -157,7 +157,13 @@ export default function ContactForm() {
           {[...new Set(contacts.map((c) => c.organization).filter(Boolean))].sort().map((o) => <option key={o} value={o!} />)}
         </datalist>
         <Field label="Relationship type">
-          <select value={String(form.relationshipType ?? "")} onChange={(e) => set("relationshipType", e.target.value)}>
+          <select value={String(form.relationshipType ?? "")} onChange={(e) => {
+            const t = e.target.value;
+            set("relationshipType", t);
+            // The main category should not also be listed as an extra one.
+            const others = splitTypes(form.otherTypes);
+            if (others.includes(t)) set("otherTypes", others.filter((x) => x !== t).join("; "));
+          }}>
             <option value="">Choose…</option>
             {RELATIONSHIP_TYPES.map((t) => <option key={t}>{t}</option>)}
             {/* Keep a retired type selectable so opening the form does not silently change it. */}
@@ -165,6 +171,20 @@ export default function ContactForm() {
               <option value={String(form.relationshipType)}>{String(form.relationshipType)} (old category)</option>
             )}
           </select>
+        </Field>
+        <Field label="Also in these categories" wide>
+          <div className="chips">
+            {RELATIONSHIP_TYPES.filter((t) => t !== form.relationshipType).map((t) => {
+              const others = splitTypes(form.otherTypes);
+              const on = others.includes(t);
+              return (
+                <button type="button" key={t} className={`chip toggle${on ? " on" : ""}`} aria-pressed={on}
+                  onClick={() => set("otherTypes", (on ? others.filter((x) => x !== t) : [...others, t]).join("; "))}>
+                  {t}
+                </button>
+              );
+            })}
+          </div>
         </Field>
         <Field label="Status">
           <select value={String(form.status ?? "")} onChange={(e) => set("status", e.target.value)}>
@@ -228,4 +248,8 @@ function toForm(c: Contact): Form {
     f[k] = typeof v === "boolean" ? v : ((v as string | null) ?? "");
   }
   return f;
+}
+
+function splitTypes(v: Form[string]): string[] {
+  return String(v ?? "").split(";").map((t) => t.trim()).filter(Boolean);
 }

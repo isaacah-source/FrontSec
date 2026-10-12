@@ -4,7 +4,7 @@ import cytoscape, { type Core, type ElementDefinition } from "cytoscape";
 import fcose from "cytoscape-fcose";
 import { useStore } from "../lib/store";
 import { StatusBadge } from "../components/ui";
-import { STATUSES, splitIssues, typeOptions, type Contact } from "../../shared/constants";
+import { STATUSES, contactTypes, splitIssues, typeOptions, type Contact } from "../../shared/constants";
 
 cytoscape.use(fcose);
 
@@ -15,6 +15,7 @@ const TYPE_COLORS: Record<string, string> = {
   "AI Labs": "#8a4fd6",
   Media: "#e0782d",
   "Policy/NatSec/Gov": "#1f9d6b",
+  Congress: "#6b8e23",
   "Donors/Funders": "#c9a227",
   "Research/Institutional Partners": "#d1497b",
   "International Gov/Diplomatic": "#1aa6b7",
@@ -110,7 +111,7 @@ export default function Network() {
   const focus = params.get("focus");
 
   const visible = useMemo(
-    () => contacts.filter((c) => (!types.size || types.has(c.relationshipType ?? "")) && (!status || c.status === status)),
+    () => contacts.filter((c) => (!types.size || contactTypes(c).some((t) => types.has(t))) && (!status || c.status === status)),
     [contacts, types, status],
   );
   const graph = useMemo(

@@ -14,6 +14,8 @@ export interface SheetIO {
   writeRow(sheet: string, row: number, values: Cell[]): Promise<void>;
   /** Write values into one cell range of a row, starting at column `col` (1-based). */
   writeCells(sheet: string, row: number, col: number, values: Cell[]): Promise<void>;
+  /** Write several whole rows at once, starting at column A of `row`. */
+  writeRows(sheet: string, row: number, rows: Cell[][]): Promise<void>;
   deleteRow(sheet: string, row: number): Promise<void>;
   addSheet(sheet: string): Promise<void>;
   /** Changes whenever the file changes; used to decide when to reload. */
@@ -60,6 +62,10 @@ export class MemorySheets implements SheetIO {
     });
     this.rev++;
     this.afterWrite?.(sheet, row);
+  }
+
+  async writeRows(sheet: string, row: number, rows: Cell[][]) {
+    for (let i = 0; i < rows.length; i++) await this.writeCells(sheet, row + i, 1, rows[i]);
   }
 
   async deleteRow(sheet: string, row: number) {

@@ -47,6 +47,7 @@ const MASTER_COLUMNS: [string, Field][] = [
   ["Address", "address"],
   ["Updated At", "updatedAt"],
   ["Updated By", "updatedBy"],
+  ["Other Types", "otherTypes"],
 ];
 const SYNTHETIC_ID = 1_000_000;
 const DATE_FIELDS = new Set<Field>(["lastContact", "nextFollowUp", "dateAdded"]);
@@ -206,6 +207,48 @@ export class Repo {
   }
 
   /**
+   * Adds many contacts at once (the Import page). Rows go in below the last contact in
+   * blocks, each with a fresh Unique ID, using the same row layout as createContact. After
+   * each block is written it is read back; any row someone else overwrote at that moment
+   * is added again on its own through createContact. Returns the new contacts in the
+   * order given.
+   */
+  async importContacts(list: Partial<Contact>[], onProgress?: (done: number) => void): Promise<Contact[]> {
+    const out: Contact[] = [];
+    const BLOCK = 25;
+    for (let start = 0; start < list.length; start += BLOCK) {
+      const part = list.slice(start, start + BLOCK);
+      const master = (await this.io.read(MASTER))!;
+      const cols = await this.ensureMasterColumns(master);
+      const { contacts } = parseMaster(master);
+      let id = Math.max(0, ...contacts.map((c) => c.id).filter((n) => n < SYNTHETIC_ID));
+      let row = master.length;
+      const nameCol = cols.get("name")! - 1;
+      while (row > 1 && !cellText(master[row - 1]?.[nameCol] ?? null)) row--;
+      row += 1;
+      const made = part.map((data) => ({
+        ...blankContact(),
+        ...data,
+        id: ++id,
+        status: data.status ?? "Not yet engaged",
+        dateAdded: data.dateAdded || today(),
+        addedBy: data.addedBy || this.me.name,
+        updatedAt: nowStamp(),
+        updatedBy: this.me.name,
+      }) as Contact);
+      await this.io.writeRows(MASTER, row, made.map((c) => buildRow(c, cols, [])));
+      const check = (await this.io.read(MASTER))!;
+      for (let i = 0; i < made.length; i++) {
+        const back = check[row - 1 + i];
+        const ok = back && Number(back[cols.get("id")! - 1]) === made[i].id && cellText(back[nameCol]) === cellText(made[i].name);
+        out.push(ok ? made[i] : await this.createContact(part[i]));
+      }
+      onProgress?.(out.length);
+    }
+    return out;
+  }
+
+  /**
    * Applies `changes` to one contact. `expectedUpdatedAt` is the Updated At value the
    * person saw; if the row has changed since, nothing is written and ConflictError
    * carries the current version.
@@ -267,8 +310,32 @@ export class Repo {
     const [x, y] = a.id < b.id ? [a, b] : [b, a];
     const exists = rows.slice(1).some((r) => Number(r[1]) === x.id && Number(r[3]) === y.id && cellText(r[5]) === kind);
     if (exists) throw new Error("Those two are already linked that way.");
-    const id = Math.max(0, ...rows.slice(1).map((r) => Number(r[0]) || 0)) + 1;
-    await this.appendRow(CONNECTIONS, [id, x.id, x.name, y.id, y.name, kind, toCell(note), this.me.name, nowStamp()]);
+    await this.addConnections([{ a: x, b: y, kind, note }]);
+  }
+
+  /**
+   * Adds many connections in one write. Pairs already linked the same way are skipped.
+   * Returns how many were added.
+   */
+  async addConnections(list: { a: Contact; b: Contact; kind: string; note: string | null }[]): Promise<number> {
+    let rows = await this.io.read(CONNECTIONS);
+    if (!rows?.length) {
+      if (!rows) await this.io.addSheet(CONNECTIONS);
+      await this.io.writeRow(CONNECTIONS, 1, [...CONNECTION_HEADERS]);
+      rows = [[...CONNECTION_HEADERS]];
+    }
+    const key = (x: number, y: number, k: string) => `${Math.min(x, y)}|${Math.max(x, y)}|${k.toLowerCase()}`;
+    const seen = new Set(rows.slice(1).map((r) => key(Number(r[1]), Number(r[3]), cellText(r[5]) ?? "")));
+    let id = Math.max(0, ...rows.slice(1).map((r) => Number(r[0]) || 0));
+    const add: Cell[][] = [];
+    for (const { a, b, kind, note } of list) {
+      if (a.id === b.id || seen.has(key(a.id, b.id, kind))) continue;
+      seen.add(key(a.id, b.id, kind));
+      const [x, y] = a.id < b.id ? [a, b] : [b, a];
+      add.push([++id, x.id, x.name, y.id, y.name, kind, toCell(note), this.me.name, nowStamp()]);
+    }
+    await this.io.writeRows(CONNECTIONS, Math.max(rows.length, 1) + 1, add);
+    return add.length;
   }
 
   async deleteConnection(id: number): Promise<void> {
@@ -318,7 +385,7 @@ function blankContact(): Omit<Contact, "id" | "name"> {
     title: null, organization: null, relationshipType: null, status: null, owner: null, email: null, phone: null,
     geo: null, interestArea: null, international: false, restricted: false, referredByName: null, referredByRole: null,
     lastContact: null, nextFollowUp: null, dateAdded: null, addedBy: null, notes: null, tags: null, linkedin: null,
-    address: null, website: null, updatedAt: null, updatedBy: null,
+    address: null, website: null, otherTypes: null, updatedAt: null, updatedBy: null,
   };
 }
 

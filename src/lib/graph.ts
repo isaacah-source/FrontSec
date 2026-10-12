@@ -149,6 +149,14 @@ export class GraphSheets implements SheetIO {
     await this.call("PATCH", `${this.sheetPath(sheet)}/range(address='${address}')`, { values: [values.map((v) => v ?? "")] }, { session: true });
   }
 
+  async writeRows(sheet: string, row: number, rows: Cell[][]) {
+    if (!rows.length) return;
+    const width = Math.max(1, ...rows.map((r) => r.length));
+    const address = `A${row}:${columnLetter(width)}${row + rows.length - 1}`;
+    const values = rows.map((r) => Array.from({ length: width }, (_, i) => r[i] ?? ""));
+    await this.call("PATCH", `${this.sheetPath(sheet)}/range(address='${address}')`, { values }, { session: true });
+  }
+
   async deleteRow(sheet: string, row: number) {
     await this.call("POST", `${this.sheetPath(sheet)}/range(address='${row}:${row}')/delete`, { shift: "Up" }, { session: true });
   }
