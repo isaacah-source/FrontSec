@@ -69,6 +69,51 @@ describe("planning an import", () => {
   });
 });
 
+describe("weekly sweep news about existing contacts", () => {
+  it("reads Updates and Touchpoints, matching by ID and name and skipping what is already current", async () => {
+    const s = await repo.load();
+    await repo.addTouchpoint(s.contacts[0], { date: "2026-10-01", type: "Email", summary: "Sent the draft" });
+    const { contacts, interactions } = await repo.load();
+    const plan = planImport([
+      { sheet: "New contacts", data: [HEADER, [900001, "Abbey Chaver", "Coefficient Giving"]] },
+      {
+        sheet: "Updates",
+        data: [
+          ["Unique ID", "Name", "Field", "New value", "Source"],
+          [2, "Jason Matheny", "Title", "President and CEO", "Signature, Oct 6 email"],
+          [2, "Jason Matheny", "Office", "Office of the President", "Signature"],
+          [1, "Ellen Nakashima", "Organization", "washington post", "already current, different case"],
+          [1, "Someone Else", "Title", "Wrong person", "name does not match the ID"],
+          [2, "Jason Matheny", "Unique ID", "77", "not an updatable field"],
+        ],
+      },
+      {
+        sheet: "Touchpoints",
+        data: [
+          ["Contact ID", "Contact", "Date", "Type", "Summary"],
+          [1, "Ellen Nakashima", "2026-10-01", "Email", "Sent the draft"],
+          [2, "Jason Matheny", new Date("2026-10-06"), "email", "Discussed the T&E framework"],
+          [900001, "Abbey Chaver", "2026-10-07", "Meeting", "Grant call"],
+          [5, "Nobody", "2026-10-07", "Email", "unknown contact"],
+        ],
+      },
+    ], contacts, interactions);
+    expect(plan.rows.map((r) => r.contact.name)).toEqual(["Abbey Chaver"]);
+    expect(plan.updates.map((u) => [u.contact.id, u.field, u.value])).toEqual([[2, "title", "President and CEO"], [2, "office", "Office of the President"]]);
+    expect(plan.touches.map((t) => [t.who, t.date, t.type, t.duplicate])).toEqual([
+      [{ trackerId: 1, name: "Ellen Nakashima" }, "2026-10-01", "Email", true],
+      [{ trackerId: 2, name: "Jason Matheny" }, "2026-10-06", "Email", false],
+      [{ fileId: 900001, name: "Abbey Chaver" }, "2026-10-07", "Meeting", false],
+    ]);
+    expect(plan.skippedNews).toBe(4);
+  });
+
+  it("accepts a file with only Updates", () => {
+    const plan = planImport([{ sheet: "Updates", data: [["Unique ID", "Name", "Field", "New value"]] }], []);
+    expect(plan).toMatchObject({ sheetName: null, rows: [], updates: [], touches: [] });
+  });
+});
+
 describe("saving an import", () => {
   it("adds contacts with fresh IDs below the last row and keeps their dates", async () => {
     const made = await repo.importContacts([

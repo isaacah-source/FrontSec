@@ -295,7 +295,7 @@ export class Repo {
   // ---- Touchpoints ----
 
   async addTouchpoint(contact: Contact, t: { date: string; type: string; summary: string; nextFollowUp?: string | null }): Promise<Contact> {
-    const rows = (await this.io.read(TOUCHPOINTS)) ?? [];
+    const rows = await this.ensureSheet(TOUCHPOINTS, TOUCHPOINT_HEADERS);
     const id = Math.max(0, ...rows.slice(1).map((r) => Number(r[0]) || 0)) + 1;
     await this.appendRow(TOUCHPOINTS, [id, contact.id, contact.name, t.date, t.type, toCell(t.summary), this.me.name, this.me.email, nowStamp()]);
     const changes: Partial<Contact> = {};
@@ -460,6 +460,17 @@ export class Repo {
 }
 
 // ---- Parsing ---------------------------------------------------------------------------
+
+/** Fields an import's Updates tab may change (not IDs, history or who-added). */
+const UPDATABLE = new Set<Field>(MASTER_COLUMNS.map(([, f]) => f).filter((f) => !["id", "dateAdded", "addedBy", "updatedAt", "updatedBy"].includes(f)));
+
+/** The contact field a Master heading (or a short form such as "Office") names, if it may be updated. */
+export function updatableField(heading: string): { field: Field; label: string; date: boolean; flag: boolean } | null {
+  const f = mapHeader([heading]).cols.keys().next().value as Field | undefined;
+  if (!f || !UPDATABLE.has(f)) return null;
+  const label = MASTER_COLUMNS.find(([, x]) => x === f)![0];
+  return { field: f, label, date: DATE_FIELDS.has(f), flag: BOOL_FIELDS.has(f) };
+}
 
 function mapHeader(header: Cell[]) {
   const byName = new Map(MASTER_COLUMNS.map(([h, f]) => [norm(h), f]));
