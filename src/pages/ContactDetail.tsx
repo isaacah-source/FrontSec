@@ -2,12 +2,14 @@ import { useMemo, useState, type FormEvent } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { addDays, can, canEditContact, errorText, formatDate, isOwner, today, useStore } from "../lib/store";
 import { Empty, Field, FollowUp, StatusBadge, initials } from "../components/ui";
+import { ContactPicker } from "../components/ContactPicker";
 import { ownerNames } from "./Contacts";
 import { CONNECTION_KINDS, INTERACTION_TYPES, STATUSES, contactTypes, splitIssues, type Contact } from "../../shared/constants";
 
 export default function ContactDetail() {
   const id = Number(useParams().id);
-  const { me, users, contacts, interactions, connections, mutate, toast } = useStore();
+  const { me, users, contacts, interactions, connections, duplicates, mutate, toast } = useStore();
+  const [flagging, setFlagging] = useState(false);
   const navigate = useNavigate();
   const [showLog, setShowLog] = useState(false);
   const c = contacts.find((x) => x.id === id);
@@ -59,7 +61,7 @@ export default function ContactDetail() {
         <div className="avatar big" aria-hidden>{initials(c.name)}</div>
         <div className="grow">
           <h1>{c.name}{c.restricted && <span className="lock" title="Marked restricted in the workbook"> 🔒</span>}</h1>
-          <div className="muted">{[c.title, c.organization].filter(Boolean).join(" · ")}</div>
+          <div className="muted">{[c.title, c.organization, c.office].filter(Boolean).join(" · ")}</div>
           <div className="badges">
             <StatusBadge status={c.status} />
             {contactTypes(c).map((t) => <Link key={t} className="badge plain" to={`/contacts?type=${encodeURIComponent(t)}`}>{t}</Link>)}
@@ -73,8 +75,24 @@ export default function ContactDetail() {
         {c.email && <a className="btn" href={`mailto:${c.email}`}>Email</a>}
         {can(me, "contributor") && <button className="btn primary" onClick={() => setShowLog((s) => !s)}>Log touchpoint</button>}
         {editable && <Link className="btn" to={`/contacts/${c.id}/edit`}>Edit</Link>}
+        {can(me, "contributor") && <button className="btn" onClick={() => setFlagging((f) => !f)}>Flag duplicate</button>}
         {me.role === "admin" && <button className="btn danger" onClick={remove}>Delete</button>}
       </div>
+
+      {duplicates.filter((p) => p.a.id === c.id || p.b.id === c.id).map((p) => {
+        const other = p.a.id === c.id ? p.b : p.a;
+        return (
+          <div key={other.id} className="banner warn dup-banner">
+            ⚠ Possibly the same person as <Link to={`/contacts/${other.id}`}>{other.name}</Link>
+            {other.organization ? ` (${other.organization})` : ""}: {p.reasons.join(", ")}.
+            {can(me, "editor") && <> <Link to={`/duplicates/merge?a=${c.id}&b=${other.id}`}>Compare and merge</Link></>}
+            {can(me, "contributor") && (
+              <> · <button className="linkish" onClick={() => mutate((r) => r.markDuplicate(c, other, "not duplicate")).catch((e) => toast(errorText(e)))}>Not the same person</button></>
+            )}
+          </div>
+        );
+      })}
+      {flagging && <FlagDuplicate contact={c} onDone={() => setFlagging(false)} />}
 
       {showLog && <LogTouchpoint contact={c} onDone={() => setShowLog(false)} />}
 
@@ -292,6 +310,37 @@ function AddConnection({ contact }: { contact: Contact }) {
         ))}
       </ul>
       <button className="linkish small" onClick={() => setOpen(false)}>Cancel</button>
+    </div>
+  );
+}
+
+/** Marks this contact and another as the same person; they then appear on Possible duplicates. */
+function FlagDuplicate({ contact, onDone }: { contact: Contact; onDone: () => void }) {
+  const { contacts, mutate, toast } = useStore();
+  const [other, setOther] = useState<Contact | null>(null);
+  const [note, setNote] = useState("");
+  const [busy, setBusy] = useState(false);
+  const save = async () => {
+    if (!other) return;
+    setBusy(true);
+    try {
+      await mutate((r) => r.markDuplicate(contact, other, "flagged", note.trim() || null));
+      toast(`Flagged ${contact.name} and ${other.name} as possible duplicates.`);
+      onDone();
+    } catch (e) {
+      toast(errorText(e));
+      setBusy(false);
+    }
+  };
+  return (
+    <div className="card connect-box">
+      <b>Which contact is the same person as {contact.name}?</b>
+      <ContactPicker contacts={contacts} value={other} onChange={setOther} placeholder="Type a name" exclude={contact.id} />
+      <input placeholder="Note (optional), e.g. “same person, new job”" value={note} onChange={(e) => setNote(e.target.value)} />
+      <div className="row">
+        <button className="btn primary small" disabled={!other || busy} onClick={save}>Flag as duplicate</button>
+        <button className="linkish small" onClick={onDone}>Cancel</button>
+      </div>
     </div>
   );
 }

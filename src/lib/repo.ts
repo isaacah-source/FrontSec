@@ -1,5 +1,5 @@
 import type { Cell, SheetIO } from "./sheets";
-import { STATUSES, type Connection, type Contact, type Interaction, type Role, type User, ROLES } from "../../shared/constants";
+import { STATUSES, type Connection, type Contact, type DuplicateMark, type Interaction, type Role, type User, ROLES } from "../../shared/constants";
 
 /**
  * Reads and writes the relationship workbook. The Master tab keeps its original columns
@@ -16,6 +16,7 @@ export const MASTER = "Master";
 export const TOUCHPOINTS = "Touchpoints";
 export const CONNECTIONS = "Connections";
 export const USERS = "App Users";
+export const DUPLICATES = "Duplicates";
 
 type Field = keyof Contact;
 
@@ -48,6 +49,7 @@ const MASTER_COLUMNS: [string, Field][] = [
   ["Updated At", "updatedAt"],
   ["Updated By", "updatedBy"],
   ["Other Types", "otherTypes"],
+  ["Office / Department", "office"],
 ];
 const SYNTHETIC_ID = 1_000_000;
 const DATE_FIELDS = new Set<Field>(["lastContact", "nextFollowUp", "dateAdded"]);
@@ -56,6 +58,7 @@ const BOOL_FIELDS = new Set<Field>(["international", "restricted"]);
 const TOUCHPOINT_HEADERS = ["ID", "Contact ID", "Contact", "Date", "Type", "Summary", "Logged By", "Logged By Email", "Logged At"];
 const CONNECTION_HEADERS = ["ID", "Contact A ID", "Contact A", "Contact B ID", "Contact B", "Connection", "Note", "Added By", "Added At"];
 const USER_HEADERS = ["Email", "Name", "Role", "Active"];
+const DUPLICATE_HEADERS = ["ID", "Contact A ID", "Contact A", "Contact B ID", "Contact B", "Status", "Note", "Marked By", "Marked At"];
 
 export class ConflictError extends Error {
   constructor(public current: Contact) {
@@ -75,6 +78,7 @@ export interface Snapshot {
   interactions: Interaction[];
   connections: Connection[];
   users: User[];
+  duplicateMarks: DuplicateMark[];
   /** False until an admin runs setup (the App Users tab does not exist yet). */
   initialized: boolean;
 }
@@ -124,11 +128,12 @@ export class Repo {
   constructor(private io: SheetIO, private me: Me) {}
 
   async load(): Promise<Snapshot> {
-    const [master, touch, conn, users] = await Promise.all([
+    const [master, touch, conn, users, dups] = await Promise.all([
       this.io.read(MASTER),
       this.io.read(TOUCHPOINTS),
       this.io.read(CONNECTIONS),
       this.io.read(USERS),
+      this.io.read(DUPLICATES),
     ]);
     if (!master) throw new NotFoundError('The workbook has no "Master" tab.');
     const contacts = parseMaster(master).contacts;
@@ -138,6 +143,7 @@ export class Repo {
       interactions: parseTouchpoints(touch ?? []).filter((i) => ids.has(i.contactId)),
       connections: parseConnections(conn ?? []).filter((x) => ids.has(x.contactA) && ids.has(x.contactB)),
       users: parseUsers(users ?? []),
+      duplicateMarks: parseDuplicates(dups ?? []).filter((x) => ids.has(x.contactA) && ids.has(x.contactB)),
       initialized: users !== null,
     };
   }
@@ -318,12 +324,7 @@ export class Repo {
    * Returns how many were added.
    */
   async addConnections(list: { a: Contact; b: Contact; kind: string; note: string | null }[]): Promise<number> {
-    let rows = await this.io.read(CONNECTIONS);
-    if (!rows?.length) {
-      if (!rows) await this.io.addSheet(CONNECTIONS);
-      await this.io.writeRow(CONNECTIONS, 1, [...CONNECTION_HEADERS]);
-      rows = [[...CONNECTION_HEADERS]];
-    }
+    const rows = await this.ensureSheet(CONNECTIONS, CONNECTION_HEADERS);
     const key = (x: number, y: number, k: string) => `${Math.min(x, y)}|${Math.max(x, y)}|${k.toLowerCase()}`;
     const seen = new Set(rows.slice(1).map((r) => key(Number(r[1]), Number(r[3]), cellText(r[5]) ?? "")));
     let id = Math.max(0, ...rows.slice(1).map((r) => Number(r[0]) || 0));
@@ -342,6 +343,89 @@ export class Repo {
     await this.deleteWhere(CONNECTIONS, (r) => Number(r[0]) === id);
   }
 
+  // ---- Duplicates ----
+
+  /** Records that two contacts are (flagged) or are not (not duplicate) the same person. */
+  async markDuplicate(a: Contact, b: Contact, status: DuplicateMark["status"], note: string | null = null): Promise<void> {
+    const rows = await this.ensureSheet(DUPLICATES, DUPLICATE_HEADERS);
+    const [x, y] = a.id < b.id ? [a, b] : [b, a];
+    const values: Cell[] = [0, x.id, x.name, y.id, y.name, status, toCell(note), this.me.name, nowStamp()];
+    const at = rows.findIndex((r, i) => i > 0 && Number(r[1]) === x.id && Number(r[3]) === y.id);
+    if (at > 0) {
+      values[0] = Number(rows[at][0]) || at;
+      await this.io.writeRow(DUPLICATES, at + 1, values);
+    } else {
+      values[0] = Math.max(0, ...rows.slice(1).map((r) => Number(r[0]) || 0)) + 1;
+      await this.io.writeRow(DUPLICATES, Math.max(rows.length, 1) + 1, values);
+    }
+  }
+
+  async clearDuplicateMark(id: number): Promise<void> {
+    await this.deleteWhere(DUPLICATES, (r) => Number(r[0]) === id);
+  }
+
+  /**
+   * Folds `drop` into `keep`: `values` (the fields chosen on the merge screen) are saved on
+   * `keep`, `drop`'s touchpoints and connections move to `keep`, and `drop` is removed.
+   * `expectedUpdatedAt` guards both rows: if either changed since the screen was opened,
+   * nothing is written and ConflictError carries the changed one.
+   */
+  async mergeContacts(keep: Contact, drop: Contact, values: Partial<Contact>): Promise<Contact> {
+    if (keep.id === drop.id) throw new Error("Pick two different contacts to merge.");
+    const master = (await this.io.read(MASTER))!;
+    const current = parseMaster(master).contacts;
+    for (const seen of [keep, drop]) {
+      const now = current.find((c) => c.id === seen.id);
+      if (!now) throw new NotFoundError(`${seen.name} was deleted or its Unique ID changed.`);
+      if ((now.updatedAt ?? null) !== (seen.updatedAt ?? null)) {
+        const { row: _row, ...c } = now;
+        throw new ConflictError(c);
+      }
+    }
+    const saved = await this.updateContact(keep.id, values);
+
+    // Touchpoints: point drop's rows at keep.
+    const touch = (await this.io.read(TOUCHPOINTS)) ?? [];
+    for (let r = 2; r <= touch.length; r++) {
+      if (Number(touch[r - 1][1]) === drop.id) await this.io.writeCells(TOUCHPOINTS, r, 2, [keep.id, saved.name]);
+    }
+
+    // Connections: repoint, then remove links that became self-links or repeats.
+    const conn = (await this.io.read(CONNECTIONS)) ?? [];
+    const seenPairs = new Set<string>();
+    const remove: number[] = [];
+    for (let r = 2; r <= conn.length; r++) {
+      const row = conn[r - 1];
+      let a = Number(row[1]);
+      let b = Number(row[3]);
+      const touched = a === drop.id || b === drop.id;
+      if (a === drop.id) a = keep.id;
+      if (b === drop.id) b = keep.id;
+      const k = `${Math.min(a, b)}|${Math.max(a, b)}|${(cellText(row[5]) ?? "").toLowerCase()}`;
+      if (a === b || seenPairs.has(k)) {
+        remove.push(r);
+        continue;
+      }
+      seenPairs.add(k);
+      if (touched) {
+        const name = (id: number, old: Cell) => (id === keep.id ? saved.name : old);
+        await this.io.writeCells(CONNECTIONS, r, 2, [a, name(a, a === Number(row[1]) ? row[2] : row[4]), b, name(b, b === Number(row[3]) ? row[4] : row[2])]);
+      }
+    }
+    for (const r of remove.reverse()) await this.io.deleteRow(CONNECTIONS, r);
+
+    // Duplicate marks naming drop no longer mean anything.
+    const dups = (await this.io.read(DUPLICATES)) ?? [];
+    for (let r = dups.length; r >= 2; r--) {
+      if (Number(dups[r - 1][1]) === drop.id || Number(dups[r - 1][3]) === drop.id) await this.io.deleteRow(DUPLICATES, r);
+    }
+
+    const again = (await this.io.read(MASTER))!;
+    const row = parseMaster(again).contacts.find((c) => c.id === drop.id);
+    if (row) await this.io.deleteRow(MASTER, row.row);
+    return saved;
+  }
+
   // ---- Users ----
 
   async saveUser(user: User): Promise<void> {
@@ -353,6 +437,15 @@ export class Repo {
   }
 
   // ---- helpers ----
+
+  /** Reads a tab, creating it with `headers` first if it is missing or empty. */
+  private async ensureSheet(sheet: string, headers: readonly string[]): Promise<Cell[][]> {
+    const rows = await this.io.read(sheet);
+    if (rows?.length) return rows;
+    if (!rows) await this.io.addSheet(sheet);
+    await this.io.writeRow(sheet, 1, [...headers]);
+    return [[...headers]];
+  }
 
   private async appendRow(sheet: string, values: Cell[]) {
     const rows = (await this.io.read(sheet)) ?? [];
@@ -372,6 +465,8 @@ function mapHeader(header: Cell[]) {
   const byName = new Map(MASTER_COLUMNS.map(([h, f]) => [norm(h), f]));
   byName.set(norm("Tags"), "tags");
   byName.set(norm("Owner"), "owner");
+  byName.set(norm("Office"), "office");
+  byName.set(norm("Department"), "office");
   const cols = new Map<Field, number>();
   header.forEach((h, i) => {
     const f = byName.get(norm(h));
@@ -385,7 +480,7 @@ function blankContact(): Omit<Contact, "id" | "name"> {
     title: null, organization: null, relationshipType: null, status: null, owner: null, email: null, phone: null,
     geo: null, interestArea: null, international: false, restricted: false, referredByName: null, referredByRole: null,
     lastContact: null, nextFollowUp: null, dateAdded: null, addedBy: null, notes: null, tags: null, linkedin: null,
-    address: null, website: null, otherTypes: null, updatedAt: null, updatedBy: null,
+    address: null, website: null, otherTypes: null, office: null, updatedAt: null, updatedBy: null,
   };
 }
 
@@ -466,5 +561,16 @@ function parseUsers(rows: Cell[][]): User[] {
     name: cellText(r[1]) ?? cellText(r[0])!,
     role: ((ROLES as readonly string[]).includes(norm(r[2])) ? norm(r[2]) : "viewer") as Role,
     active: !/^(n|no|false|0)$/i.test(cellText(r[3]) ?? ""),
+  }));
+}
+
+function parseDuplicates(rows: Cell[][]): DuplicateMark[] {
+  return rows.slice(1).filter((r) => Number(r[0]) > 0).map((r) => ({
+    id: Number(r[0]),
+    contactA: Number(r[1]),
+    contactB: Number(r[3]),
+    status: /not/i.test(cellText(r[5]) ?? "") ? "not duplicate" : "flagged",
+    note: cellText(r[6]),
+    by: cellText(r[7]),
   }));
 }

@@ -90,6 +90,8 @@ export interface Contact {
   name: string;
   title: string | null;
   organization: string | null;
+  /** The office, department or committee within the organization ("Office / Department"). */
+  office: string | null;
   relationshipType: string | null;
   /** More categories beyond the main one, separated by semicolons ("Other Types" column). */
   otherTypes: string | null;
@@ -125,6 +127,19 @@ export interface Interaction {
   userName: string | null;
   userEmail: string | null;
   loggedAt: string | null;
+}
+
+/**
+ * A row of the Duplicates tab: either someone flagged two contacts as the same person, or
+ * someone decided a suggested pair are different people (so it stops being suggested).
+ */
+export interface DuplicateMark {
+  id: number;
+  contactA: number;
+  contactB: number;
+  status: "flagged" | "not duplicate";
+  note: string | null;
+  by: string | null;
 }
 
 export interface Connection {

@@ -12,7 +12,7 @@ import { RELATIONSHIP_TYPES, STATUSES, type Contact } from "../../shared/constan
 type Form = Record<string, string | boolean | number | null>;
 
 const BLANK: Form = {
-  name: "", title: "", organization: "", relationshipType: "", otherTypes: "", status: "Not yet engaged", owner: "",
+  name: "", title: "", organization: "", office: "", relationshipType: "", otherTypes: "", status: "Not yet engaged", owner: "",
   email: "", phone: "", geo: "", interestArea: "", tags: "", international: false, restricted: false,
   referredByName: "", referredByRole: "", lastContact: "", nextFollowUp: "", dateAdded: "", notes: "", linkedin: "", website: "", address: "",
 };
@@ -155,6 +155,13 @@ export default function ContactForm() {
         <Field label="Organization">{text("organization", { list: "orgs" })}</Field>
         <datalist id="orgs">
           {[...new Set(contacts.map((c) => c.organization).filter(Boolean))].sort().map((o) => <option key={o} value={o!} />)}
+        </datalist>
+        <Field label="Office / Department">{text("office", { list: "offices", placeholder: "e.g. Appropriations Committee, CCTI" })}</Field>
+        <datalist id="offices">
+          {/* Offices already used at this organization first, so people pick the same spelling. */}
+          {[...new Set(contacts
+            .filter((c) => c.office && (!form.organization || c.organization?.toLowerCase() === String(form.organization).toLowerCase()))
+            .map((c) => c.office!))].sort().map((o) => <option key={o} value={o} />)}
         </datalist>
         <Field label="Relationship type">
           <select value={String(form.relationshipType ?? "")} onChange={(e) => {
