@@ -3,7 +3,7 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { addDays, can, canEditContact, errorText, formatDate, isOwner, today, useStore } from "../lib/store";
 import { Empty, Field, FollowUp, StatusBadge, initials } from "../components/ui";
 import { ownerNames } from "./Contacts";
-import { CONNECTION_KINDS, INTERACTION_TYPES, STATUSES, splitIssues, type Contact } from "../../shared/constants";
+import { CONNECTION_KINDS, INTERACTION_TYPES, STATUSES, contactTypes, splitIssues, type Contact } from "../../shared/constants";
 
 export default function ContactDetail() {
   const id = Number(useParams().id);
@@ -62,7 +62,7 @@ export default function ContactDetail() {
           <div className="muted">{[c.title, c.organization].filter(Boolean).join(" · ")}</div>
           <div className="badges">
             <StatusBadge status={c.status} />
-            {c.relationshipType && <span className="badge plain">{c.relationshipType}</span>}
+            {contactTypes(c).map((t) => <Link key={t} className="badge plain" to={`/contacts?type=${encodeURIComponent(t)}`}>{t}</Link>)}
             {c.international && <span className="badge plain">International</span>}
           </div>
         </div>
@@ -170,7 +170,10 @@ export default function ContactDetail() {
       <section className="card">
         <div className="card-head">
           <h2>Connections</h2>
-          <Link to={`/network?focus=${c.id}`} className="linkish">See on network map →</Link>
+          <span className="row">
+            <Link to={`/connections?a=${c.id}`} className="linkish">Who knows who →</Link>
+            <Link to={`/network?focus=${c.id}`} className="linkish">See on network map →</Link>
+          </span>
         </div>
         <h3>People they know</h3>
         {related.links.length === 0 ? <p className="muted small">No personal connections recorded.</p> : (
@@ -256,7 +259,7 @@ function AddConnection({ contact }: { contact: Contact }) {
   const { contacts, mutate, toast } = useStore();
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState("");
-  const [kind, setKind] = useState<string>("Personal");
+  const [kind, setKind] = useState<string>(CONNECTION_KINDS[0]);
   const [note, setNote] = useState("");
   const matches = q.length < 2 ? [] : contacts
     .filter((x) => x.id !== contact.id && x.name.toLowerCase().includes(q.toLowerCase()))
@@ -280,7 +283,7 @@ function AddConnection({ contact }: { contact: Contact }) {
         <select value={kind} onChange={(e) => setKind(e.target.value)} aria-label="Connection type">
           {CONNECTION_KINDS.map((k) => <option key={k}>{k}</option>)}
         </select>
-        <input placeholder="Note (optional), e.g. “college roommates”" value={note} onChange={(e) => setNote(e.target.value)} />
+        <input placeholder={kind === CONNECTION_KINDS[0] ? "Note (optional): who introduced whom, and when" : "Note (optional), e.g. “served together at DIU”"} value={note} onChange={(e) => setNote(e.target.value)} />
       </div>
       <input autoFocus placeholder={`Who does ${contact.name.split(" ")[0]} know? Type a name`} value={q} onChange={(e) => setQ(e.target.value)} />
       <ul className="plain picker">

@@ -14,6 +14,8 @@ import Contacts from "./pages/Contacts";
 import ContactDetail from "./pages/ContactDetail";
 import ContactForm from "./pages/ContactForm";
 import Admin from "./pages/Admin";
+import Connections from "./pages/Connections";
+import Import from "./pages/Import";
 
 // The graph library is large; load it only when someone opens the map.
 const Network = lazy(() => import("./pages/Network"));
@@ -154,10 +156,11 @@ function Shell({ demo }: { demo: boolean }) {
     // Only on arrival.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-  const links = [
+  const links: { to: string; label: string; short?: string; icon: string; end?: boolean }[] = [
     { to: "/", label: "Today", icon: "◎", end: true },
     { to: "/contacts", label: "Contacts", icon: "☰" },
     { to: "/network", label: "Network", icon: "⬡" },
+    { to: "/connections", label: "Who knows who", short: "Links", icon: "⇄" },
     ...(can(me, "contributor") ? [{ to: "/contacts/new", label: "Add", icon: "+" }] : []),
     ...(can(me, "admin") ? [{ to: "/admin", label: "Admin", icon: "⚙" }] : []),
   ];
@@ -195,6 +198,8 @@ function Shell({ demo }: { demo: boolean }) {
           <Route path="/contacts/new" element={<ContactForm />} />
           <Route path="/contacts/:id" element={<ContactDetail />} />
           <Route path="/contacts/:id/edit" element={<ContactForm />} />
+          <Route path="/connections" element={<Connections />} />
+          <Route path="/import" element={<Import />} />
           <Route path="/network" element={<Suspense fallback={<div className="splash">Loading map…</div>}><Network /></Suspense>} />
           <Route path="/admin" element={<Admin />} />
           <Route path="*" element={<p className="pad">Page not found.</p>} />
@@ -204,7 +209,7 @@ function Shell({ demo }: { demo: boolean }) {
         {links.map((l) => (
           <NavLink key={l.to} to={l.to} end={l.end} className="tab">
             <span className="navicon" aria-hidden>{l.icon}</span>
-            <span>{l.label}</span>
+            <span>{l.short ?? l.label}</span>
           </NavLink>
         ))}
       </nav>

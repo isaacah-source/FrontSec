@@ -8,6 +8,7 @@ export const RELATIONSHIP_TYPES = [
   "AI Labs",
   "Media",
   "Policy/NatSec/Gov",
+  "Congress",
   "Donors/Funders",
   "Research/Institutional Partners",
   "International Gov/Diplomatic",
@@ -18,10 +19,10 @@ export const RELATIONSHIP_TYPES = [
  * in the workbook (for example the retired "Fellows/Advisors/Board"), so contacts that
  * still carry an old type can be found and moved.
  */
-export function typeOptions(contacts: { relationshipType: string | null }[]): string[] {
+export function typeOptions(contacts: { relationshipType: string | null; otherTypes?: string | null }[]): string[] {
   const extra = new Set<string>();
   for (const c of contacts) {
-    if (c.relationshipType && !(RELATIONSHIP_TYPES as readonly string[]).includes(c.relationshipType)) extra.add(c.relationshipType);
+    for (const t of contactTypes(c)) if (!(RELATIONSHIP_TYPES as readonly string[]).includes(t)) extra.add(t);
   }
   return [...RELATIONSHIP_TYPES, ...[...extra].sort()];
 }
@@ -47,7 +48,33 @@ export const ROLE_DESCRIPTIONS: Record<Role, string> = {
 
 export const INTERACTION_TYPES = ["Meeting", "Call", "Email", "Event", "Message", "Other"] as const;
 
-export const CONNECTION_KINDS = ["Personal", "Referral", "Colleague", "Family", "Other"] as const;
+/**
+ * How two contacts know each other, beyond working at the same place (the app already
+ * groups people by organization on its own). Older rows may still say Personal, Referral
+ * or Colleague; those keep showing as written.
+ */
+export const CONNECTION_KINDS = [
+  "Introduced / connected",
+  "Knows personally",
+  "Worked together",
+  "Former colleagues",
+  "Met at an event",
+  "Family",
+  "Other",
+] as const;
+
+/** Maps the older connection words, as in the Outlook import file, onto the current list. */
+export function normalizeConnectionKind(kind: string | null | undefined): string {
+  const k = (kind ?? "").trim();
+  const legacy: Record<string, string> = {
+    referral: "Introduced / connected",
+    introduced: "Introduced / connected",
+    personal: "Knows personally",
+    colleague: "Worked together",
+  };
+  if (!k) return "Other";
+  return legacy[k.toLowerCase()] ?? (CONNECTION_KINDS as readonly string[]).find((x) => x.toLowerCase() === k.toLowerCase()) ?? k;
+}
 
 /** A row of the "App Users" tab. */
 export interface User {
@@ -64,6 +91,8 @@ export interface Contact {
   title: string | null;
   organization: string | null;
   relationshipType: string | null;
+  /** More categories beyond the main one, separated by semicolons ("Other Types" column). */
+  otherTypes: string | null;
   status: string | null;
   owner: string | null;
   email: string | null;
@@ -104,6 +133,16 @@ export interface Connection {
   contactB: number;
   kind: string;
   note: string | null;
+}
+
+/** Every category a contact is in: the main Relationship Type first, then the others. */
+export function contactTypes(c: { relationshipType: string | null; otherTypes?: string | null }): string[] {
+  const out: string[] = [];
+  for (const t of [c.relationshipType, ...(c.otherTypes ?? "").split(";")]) {
+    const v = (t ?? "").trim();
+    if (v && !out.some((x) => x.toLowerCase() === v.toLowerCase())) out.push(v);
+  }
+  return out;
 }
 
 /** Split an Interest Area or Tags cell into individual issues. */

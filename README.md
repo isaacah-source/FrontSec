@@ -24,6 +24,18 @@ Works in any browser on a laptop or phone, and can be added to a phone's home sc
   can set the next follow-up in one tap.
 - **Network map.** Contacts connected by organization, shared issue, personal connection,
   or the staff member who owns the relationship.
+- **Who knows who.** Record how two people are connected beyond their organization:
+  introduced / connected, knows personally, worked together, former colleagues, met at an
+  event, family, or other, with a note. Each contact page lists their connections.
+- **Several categories per contact.** Relationship Type stays the main category (the
+  category tabs use it); "Also in these categories" adds more, saved in an **Other Types**
+  column. Type filters on Contacts and the network map match any of a contact's categories.
+- **Import.** Editors and admins can add many contacts from an Excel file laid out like
+  Master (for example the Outlook-sweep file). The app shows every row first, unticks people
+  already in the tracker, gives each new contact a fresh Unique ID, and imports a
+  Connections tab if the file has one.
+- **Sort by date added.** The Sort menu on Contacts (and the Added column) lists the newest
+  additions first.
 - **Business cards.** Your phone's own text reader (Google Lens on Android, Live Text on
   iPhone) reads the card; paste the text into the new-contact form, or on Android share it
   straight to the app, and the form fills in. See *Adding a business card*.
@@ -37,7 +49,7 @@ The first admin to open the app clicks **Set up workbook**, which adds:
 
 | Where | What |
 |-------|------|
-| Master, after column T | Title, LinkedIn, Website, Address, Updated At, Updated By |
+| Master, after column T | Title, LinkedIn, Website, Address, Updated At, Updated By, Other Types |
 | New tab **Touchpoints** | One row per logged meeting, call, or email |
 | New tab **Connections** | One row per personal connection between two contacts |
 | New tab **App Users** | Microsoft email, name, and app role for each person |
@@ -184,7 +196,10 @@ update `LOGO_W` and `LOGO_H` in the script) and run `node icon-src/make-icons.mj
 ## Relationship types
 
 The app offers these types: Fellows, Advisors, Board, AI Labs, Media, Policy/NatSec/Gov,
-Donors/Funders, Research/Institutional Partners, and International Gov/Diplomatic.
+Congress, Donors/Funders, Research/Institutional Partners, and International Gov/Diplomatic.
+To show Congress in the workbook's column D dropdown, add `Congress` to that column's
+**Data > Data Validation** source list. A Congress category tab can be copied from another
+category tab the same way as described below.
 The list lives in `shared/constants.ts`.
 
 "Fellows/Advisors/Board" was split into Fellows, Advisors, and Board. Contacts that still
