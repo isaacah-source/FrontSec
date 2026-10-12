@@ -2,12 +2,16 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import cytoscape, { type Core } from "cytoscape";
 import fcose from "cytoscape-fcose";
+import layoutUtilities from "cytoscape-layout-utilities";
 import { useStore } from "../lib/store";
 import { StatusBadge } from "../components/ui";
 import { STATUSES, contactTypes, typeOptions, type Contact } from "../../shared/constants";
 import { OTHER, TYPE_COLORS, buildGraph, type Layer } from "../lib/networkGraph";
 
 cytoscape.use(fcose);
+// fcose packs separate groups (organizations with no links to the rest) next to each other
+// only when this extension is registered; without it they scatter far from the main body.
+cytoscape.use(layoutUtilities);
 
 
 /** Line colors. Personal links use a red no contact type uses, so they read as lines, not people. */
