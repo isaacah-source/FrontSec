@@ -16,6 +16,7 @@ import ContactForm from "./pages/ContactForm";
 import Admin from "./pages/Admin";
 import Connections from "./pages/Connections";
 import Import from "./pages/Import";
+import Duplicates, { MergeContacts } from "./pages/Duplicates";
 
 // The graph library is large; load it only when someone opens the map.
 const Network = lazy(() => import("./pages/Network"));
@@ -200,6 +201,8 @@ function Shell({ demo }: { demo: boolean }) {
           <Route path="/contacts/:id/edit" element={<ContactForm />} />
           <Route path="/connections" element={<Connections />} />
           <Route path="/import" element={<Import />} />
+          <Route path="/duplicates" element={<Duplicates />} />
+          <Route path="/duplicates/merge" element={<MergeContacts />} />
           <Route path="/network" element={<Suspense fallback={<div className="splash">Loading map…</div>}><Network /></Suspense>} />
           <Route path="/admin" element={<Admin />} />
           <Route path="*" element={<p className="pad">Page not found.</p>} />

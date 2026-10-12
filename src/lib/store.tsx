@@ -1,7 +1,8 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Repo, type Me, type Snapshot } from "./repo";
 import type { SheetIO } from "./sheets";
-import type { Connection, Contact, Interaction, Role, User } from "../../shared/constants";
+import type { Connection, Contact, DuplicateMark, Interaction, Role, User } from "../../shared/constants";
+import { findDuplicates, type DuplicatePair } from "./duplicates";
 
 interface Toast {
   id: number;
@@ -26,6 +27,9 @@ interface Store {
   contacts: Contact[];
   interactions: Interaction[];
   connections: Connection[];
+  duplicateMarks: DuplicateMark[];
+  /** Likely duplicate pairs, strongest first (see duplicates.ts). */
+  duplicates: DuplicatePair[];
   initialized: boolean;
   links: Links;
   online: boolean;
@@ -126,10 +130,13 @@ export function DataProvider({ io, identity, links, signOut, initial, children }
     return { email: identity.email, name: row?.name ?? identity.name, role: row?.role ?? "viewer", unlisted: !row };
   }, [snap.users, identity]);
 
+  const duplicates = useMemo(() => findDuplicates(snap.contacts, snap.duplicateMarks ?? []), [snap.contacts, snap.duplicateMarks]);
+
   const value = useMemo<Store>(() => ({
     me, users: snap.users, contacts: snap.contacts, interactions: snap.interactions, connections: snap.connections,
+    duplicateMarks: snap.duplicateMarks ?? [], duplicates,
     initialized: snap.initialized, links, online, lastSync, repo, mutate, refresh, toasts, toast, signOut,
-  }), [me, snap, links, online, lastSync, repo, mutate, refresh, toasts, toast, signOut]);
+  }), [me, snap, duplicates, links, online, lastSync, repo, mutate, refresh, toasts, toast, signOut]);
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }
 

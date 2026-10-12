@@ -34,6 +34,14 @@ Works in any browser on a laptop or phone, and can be added to a phone's home sc
   Master (for example the Outlook-sweep file). The app shows every row first, unticks people
   already in the tracker, gives each new contact a fresh Unique ID, and imports a
   Connections tab if the file has one.
+- **Office / department.** Each contact can name the office, department or committee
+  within their organization (an **Office / Department** column on Master). The network map
+  draws each organization as a box holding its people, with a dashed box per office.
+- **Duplicates and merge.** The app flags likely duplicates (same email or phone, the same
+  name written differently, or flagged by hand with **Flag duplicate** on a contact page).
+  **Contacts → Duplicates** lists them; **Compare and merge** shows both records side by side,
+  lets you pick each value, and moves touchpoints and connections to the kept contact.
+  "Not the same person" stops a pair being suggested. Decisions live in a **Duplicates** tab.
 - **Sort by date added.** The Sort menu on Contacts (and the Added column) lists the newest
   additions first.
 - **Business cards.** Your phone's own text reader (Google Lens on Android, Live Text on
@@ -49,9 +57,10 @@ The first admin to open the app clicks **Set up workbook**, which adds:
 
 | Where | What |
 |-------|------|
-| Master, after column T | Title, LinkedIn, Website, Address, Updated At, Updated By, Other Types |
+| Master, after column T | Title, LinkedIn, Website, Address, Updated At, Updated By, Other Types, Office / Department |
 | New tab **Touchpoints** | One row per logged meeting, call, or email |
 | New tab **Connections** | One row per personal connection between two contacts |
+| New tab **Duplicates** | Pairs flagged as the same person, or marked as different people |
 | New tab **App Users** | Microsoft email, name, and app role for each person |
 
 People can keep opening the workbook in Excel. Avoid renaming the Master tab or its column

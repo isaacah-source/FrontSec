@@ -17,7 +17,7 @@ const SORTS: { value: string; label: string; key: SortKey; dir: 1 | -1 }[] = [
 ];
 
 export default function Contacts() {
-  const { me, contacts, users, toast, mutate, links } = useStore();
+  const { me, contacts, users, toast, mutate, links, duplicates } = useStore();
   const [params, setParams] = useSearchParams();
   const navigate = useNavigate();
   const [selected, setSelected] = useState<Set<number>>(new Set());
@@ -32,6 +32,8 @@ export default function Contacts() {
   const due = params.get("due") ?? "";
   const issue = params.get("issue") ?? "";
   const org = params.get("org") ?? "";
+  const dup = params.get("dup") ?? "";
+  const dupIds = useMemo(() => new Set(duplicates.flatMap((p) => [p.a.id, p.b.id])), [duplicates]);
 
   const set = (k: string, v: string) => {
     const next = new URLSearchParams(params);
@@ -60,9 +62,10 @@ export default function Contacts() {
       if (due === "week" && !(c.nextFollowUp && c.nextFollowUp >= t && c.nextFollowUp <= week)) return false;
       if (due === "none" && c.nextFollowUp) return false;
       if (org && (c.organization ?? "").toLowerCase() !== org.toLowerCase()) return false;
+      if (dup && !dupIds.has(c.id)) return false;
       if (issue && !splitIssues(c.tags, c.interestArea).some((i) => i.toLowerCase() === issue.toLowerCase())) return false;
       if (terms.length) {
-        const hay = [c.name, c.organization, c.title, c.email, c.notes, c.tags, c.interestArea, c.geo, c.owner]
+        const hay = [c.name, c.organization, c.office, c.title, c.email, c.notes, c.tags, c.interestArea, c.geo, c.owner]
           .filter(Boolean).join(" ").toLowerCase();
         if (!terms.every((w) => hay.includes(w))) return false;
       }
@@ -82,7 +85,7 @@ export default function Contacts() {
       if ((x === "\uffff") !== (y === "\uffff")) return x === "\uffff" ? 1 : -1;
       return x.localeCompare(y, undefined, { sensitivity: "base" }) * sort.dir || a.name.localeCompare(b.name);
     });
-  }, [contacts, q, type, status, owner, due, issue, org, sort]);
+  }, [contacts, q, type, status, owner, due, issue, org, dup, dupIds, sort]);
 
   const toggleSort = (key: SortKey) => setSort((s) => ({ key, dir: s.key === key ? (s.dir === 1 ? -1 : 1) : key === "dateAdded" || key === "lastContact" ? -1 : 1 }));
   const sortValue = SORTS.find((s) => s.key === sort.key && s.dir === sort.dir)?.value ?? "";
@@ -134,7 +137,7 @@ export default function Contacts() {
   };
 
   const bulkMode = can(me, "editor");
-  const hasFilters = q || type || status || owner || due || issue || org;
+  const hasFilters = q || type || status || owner || due || issue || org || dup;
   const owners = ownerNames(users, contacts);
   const types = typeOptions(contacts);
 
@@ -150,6 +153,7 @@ export default function Contacts() {
         <h1>Contacts <span className="muted count">{filtered.length}</span></h1>
         <div className="head-actions">
           {links.workbookUrl && <a className="btn" href={links.workbookUrl} target="_blank" rel="noreferrer">Open in Excel</a>}
+          {duplicates.length > 0 && <Link className="btn" to="/duplicates">⚠ Duplicates ({duplicates.length})</Link>}
           {can(me, "editor") && <Link className="btn" to="/import">Import</Link>}
           {can(me, "contributor") && <Link className="btn primary" to="/contacts/new">Add contact</Link>}
         </div>
@@ -188,6 +192,7 @@ export default function Contacts() {
           {!sortValue && <option value="">Sorted by column</option>}
           {SORTS.map((s) => <option key={s.value} value={s.value}>Sort: {s.label}</option>)}
         </select>
+        {dup && <button className="chip" onClick={() => set("dup", "")}>Possible duplicates ✕</button>}
         {org && <button className="chip" onClick={() => set("org", "")}>Org: {org} ✕</button>}
         {hasFilters && <button className="linkish" onClick={() => setParams({}, { replace: true })}>Clear</button>}
       </div>
@@ -267,8 +272,11 @@ export default function Contacts() {
                         <input type="checkbox" aria-label={`Select ${c.name}`} checked={selected.has(c.id)} onChange={() => toggle(c.id)} />
                       </td>
                     )}
-                    <td className="strong">{c.name}{c.restricted && " 🔒"}</td>
-                    <td>{c.organization}</td>
+                    <td className="strong">
+                      {c.name}{c.restricted && " 🔒"}
+                      {dupIds.has(c.id) && <span className="badge warn" title="Possible duplicate">⚠</span>}
+                    </td>
+                    <td>{c.organization}{c.office && <div className="muted small">{c.office}</div>}</td>
                     <td className="small">{contactTypes(c).join(", ")}</td>
                     <td><StatusBadge status={c.status} /></td>
                     <td>{c.owner ?? <span className="muted">Unassigned</span>}</td>
@@ -286,8 +294,8 @@ export default function Contacts() {
               <Link key={c.id} to={`/contacts/${c.id}`} className="contact-row">
                 <div className="avatar" aria-hidden>{initials(c.name)}</div>
                 <div className="grow">
-                  <div className="row-title">{c.name}{c.restricted && " 🔒"}</div>
-                  <div className="muted small">{c.organization ?? contactTypes(c).join(", ")}</div>
+                  <div className="row-title">{c.name}{c.restricted && " 🔒"}{dupIds.has(c.id) && <span className="badge warn">⚠</span>}</div>
+                  <div className="muted small">{[c.organization, c.office].filter(Boolean).join(" · ") || contactTypes(c).join(", ")}</div>
                   {sort.key === "dateAdded" && <div className="muted small">Added {formatDate(c.dateAdded) || "date unknown"}</div>}
                   <div className="small"><StatusBadge status={c.status} /> {c.owner && <span className="muted">· {c.owner}</span>}</div>
                 </div>

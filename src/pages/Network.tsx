@@ -1,28 +1,17 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import cytoscape, { type Core, type ElementDefinition } from "cytoscape";
+import cytoscape, { type Core } from "cytoscape";
 import fcose from "cytoscape-fcose";
 import { useStore } from "../lib/store";
 import { StatusBadge } from "../components/ui";
-import { STATUSES, contactTypes, splitIssues, typeOptions, type Contact } from "../../shared/constants";
+import { STATUSES, contactTypes, typeOptions, type Contact } from "../../shared/constants";
+import { OTHER, TYPE_COLORS, buildGraph, type Layer } from "../lib/networkGraph";
 
 cytoscape.use(fcose);
 
-const TYPE_COLORS: Record<string, string> = {
-  Fellows: "#2f6fdf",
-  Advisors: "#5b8def",
-  Board: "#1c3f8f",
-  "AI Labs": "#8a4fd6",
-  Media: "#e0782d",
-  "Policy/NatSec/Gov": "#1f9d6b",
-  Congress: "#6b8e23",
-  "Donors/Funders": "#c9a227",
-  "Research/Institutional Partners": "#d1497b",
-  "International Gov/Diplomatic": "#1aa6b7",
-};
-const OTHER = "#8a94a6";
+
 /** Line colors. Personal links use a red no contact type uses, so they read as lines, not people. */
-const LINE = { org: "#b5bfcd", issue: "#e3b341", owner: "#7f95b8", personal: "#e03131" };
+const LINE = { issue: "#e3b341", owner: "#7f95b8", personal: "#e03131" };
 
 /**
  * fcose settings. Counting labels in each node's size is what keeps names and organization
@@ -38,6 +27,10 @@ const LAYOUT = {
   edgeElasticity: 0.3,
   nodeSeparation: 90,
   gravity: 0.2,
+  // Keep each box's people close together so boxes stay compact.
+  gravityCompound: 3,
+  gravityRangeCompound: 0.8,
+  nestingFactor: 0.4,
   numIter: 3000,
   packComponents: true,
   tile: true,
@@ -45,74 +38,21 @@ const LAYOUT = {
   tilingPaddingHorizontal: 40,
 };
 
-type Layer = "org" | "issue" | "owner" | "personal";
-type Picked = { kind: "contact"; contact: Contact } | { kind: "org" | "issue" | "owner"; label: string; members: Contact[] };
-
-/**
- * Builds a graph of contacts plus three kinds of hub node (organization, issue, staff
- * owner) and draws person-to-person connections as direct edges. Hubs with a single
- * member add nothing visually, so they are dropped unless "show singletons" is on.
- */
-export function buildGraph(
-  contacts: Contact[],
-  connections: { id: number; contactA: number; contactB: number; kind: string }[],
-  layers: Set<Layer>,
-  opts: { singletons: boolean; isolated: boolean },
-): { elements: ElementDefinition[]; hubs: Map<string, Contact[]> } {
-  const hubs = new Map<string, Contact[]>();
-  const hubLabel = new Map<string, string>();
-  const add = (id: string, label: string, c: Contact) => {
-    hubs.set(id, [...(hubs.get(id) ?? []), c]);
-    if (!hubLabel.has(id)) hubLabel.set(id, label);
-  };
-  for (const c of contacts) {
-    if (layers.has("org") && c.organization) add(`org:${c.organization.toLowerCase()}`, c.organization, c);
-    if (layers.has("issue")) for (const i of splitIssues(c.tags, c.interestArea)) add(`issue:${i.toLowerCase()}`, i, c);
-    if (layers.has("owner") && c.owner) add(`owner:${c.owner.toLowerCase()}`, c.owner, c);
-  }
-  const minMembers = opts.singletons ? 1 : 2;
-  const keptHubs = [...hubs.entries()].filter(([id, m]) => id.startsWith("owner:") || m.length >= minMembers);
-
-  const ids = new Set(contacts.map((c) => c.id));
-  const personal = layers.has("personal")
-    ? connections.filter((x) => ids.has(x.contactA) && ids.has(x.contactB))
-    : [];
-
-  const linked = new Set<number>();
-  for (const [, m] of keptHubs) for (const c of m) linked.add(c.id);
-  for (const x of personal) {
-    linked.add(x.contactA);
-    linked.add(x.contactB);
-  }
-
-  const elements: ElementDefinition[] = [];
-  for (const c of contacts) {
-    if (!opts.isolated && !linked.has(c.id)) continue;
-    elements.push({
-      data: { id: `c:${c.id}`, label: c.name, kind: "contact", color: TYPE_COLORS[c.relationshipType ?? ""] ?? OTHER },
-    });
-  }
-  for (const [id, members] of keptHubs) {
-    const kind = id.split(":")[0];
-    elements.push({ data: { id, label: hubLabel.get(id), kind, size: 18 + Math.min(members.length, 30) * 1.4 } });
-    for (const c of members) elements.push({ data: { id: `${id}->${c.id}`, source: id, target: `c:${c.id}`, kind } });
-  }
-  for (const x of personal) {
-    elements.push({ data: { id: `p:${x.id}`, source: `c:${x.contactA}`, target: `c:${x.contactB}`, kind: "personal", label: x.kind } });
-  }
-  return { elements, hubs };
-}
+type HubKind = "org" | "office" | "issue" | "owner";
+type Picked = { kind: "contact"; contact: Contact } | { kind: HubKind; label: string; members: Contact[] };
 
 const STYLE: cytoscape.StylesheetJson = [
   // Labels shrink with the zoom and are hidden below 8 px on screen, so organization and issue
   // names (larger) stay readable from the overview and people's names appear as you zoom in.
   { selector: "node", style: { label: "data(label)", "font-size": 10, color: "#2b3445", "text-valign": "bottom", "text-margin-y": 3, "min-zoomed-font-size": 8, "text-wrap": "wrap", "text-max-width": "140px" } },
   // People's names appear once zoomed in far enough to read them; the overview shows groups.
-  { selector: 'node[kind = "contact"]', style: { "background-color": "data(color)", width: 14, height: 14, "min-zoomed-font-size": 11, "text-max-width": "90px" } },
-  { selector: 'node[kind = "org"]', style: { shape: "round-rectangle", "background-color": "#dfe6f1", "border-color": "#5b6b86", "border-width": 1.5, width: "data(size)", height: "data(size)", "font-weight": "bold", "font-size": 20, "text-background-color": "#fff", "text-background-opacity": 0.75, "text-background-padding": "1px" } },
+  { selector: 'node[kind = "contact"]', style: { "background-color": "data(color)", width: 14, height: 14, "min-zoomed-font-size": 9, "text-max-width": "90px" } },
+  // Organization boxes hold their people; office boxes sit inside them.
+  { selector: 'node[kind = "org"]', style: { shape: "round-rectangle", "background-color": "#eef2f8", "background-opacity": 0.7, "border-color": "#8796ad", "border-width": 1.5, padding: "14px", "text-valign": "top", "text-halign": "center", "text-margin-y": -4, "font-weight": "bold", "font-size": 16, "text-max-width": "220px", "min-zoomed-font-size": 6 } },
+  { selector: 'node[kind = "office"]', style: { shape: "round-rectangle", "background-color": "#ffffff", "background-opacity": 0.85, "border-color": "#a9b5c7", "border-width": 1, "border-style": "dashed", padding: "8px", "text-valign": "top", "text-halign": "center", "text-margin-y": -2, "font-size": 11, "font-style": "italic", color: "#4d5a70", "text-max-width": "160px", "min-zoomed-font-size": 7 } },
   { selector: 'node[kind = "issue"]', style: { shape: "diamond", "background-color": "#fdf0d5", "border-color": "#b98a1b", "border-width": 1.5, width: "data(size)", height: "data(size)", "font-size": 18 } },
   { selector: 'node[kind = "owner"]', style: { shape: "star", "background-color": "#1f3a5f", width: "data(size)", height: "data(size)", "font-weight": "bold", "font-size": 22 } },
-  { selector: "edge", style: { width: 1, "line-color": LINE.org, "curve-style": "haystack", opacity: 0.8 } },
+  { selector: "edge", style: { width: 1, "line-color": "#c7cfdb", "curve-style": "haystack", opacity: 0.8 } },
   { selector: 'edge[kind = "issue"]', style: { "line-color": LINE.issue } },
   { selector: 'edge[kind = "owner"]', style: { "line-color": LINE.owner, "line-style": "dashed" } },
   { selector: 'edge[kind = "personal"]', style: { width: 2.5, "line-color": LINE.personal, "curve-style": "bezier", label: "data(label)", "font-size": 7, color: "#a61e1e", "text-rotation": "autorotate", "min-zoomed-font-size": 9 } },
@@ -184,8 +124,10 @@ export default function Network() {
       minZoom: 0.1,
       maxZoom: 4,
     });
-    const known = prev ? instance.nodes().filter((n) => prev.positions.has(n.id())) : instance.collection();
-    if (prev && known.length >= instance.nodes().length * 0.8) {
+    // Boxes take their size and place from the people inside, so only people and hubs are pinned.
+    const leaves = instance.nodes().filter((n) => !n.isParent());
+    const known = prev ? leaves.filter((n) => prev.positions.has(n.id())) : instance.collection();
+    if (prev && known.length >= leaves.length * 0.8) {
       // Mostly the same map: put nodes back where they were, settle only the new ones nearby,
       // and keep the person's zoom and position.
       known.forEach((n) => {
@@ -205,10 +147,10 @@ export default function Network() {
         const c = cs.find((x) => x.id === Number(id.slice(2)));
         if (c) setPicked({ kind: "contact", contact: c });
       } else {
-        setPicked({ kind: id.split(":")[0] as "org" | "issue" | "owner", label: e.target.data("label"), members: g.hubs.get(id) ?? [] });
+        setPicked({ kind: id.split(":")[0] as HubKind, label: e.target.data("label"), members: g.hubs.get(id) ?? [] });
       }
       highlight(instance, e.target);
-      zoomTo(instance, e.target.closedNeighborhood().closedNeighborhood());
+      zoomTo(instance, related(e.target));
     });
     instance.on("tap", (e) => {
       if (e.target === instance) {
@@ -245,7 +187,8 @@ export default function Network() {
       const z = instance.zoom();
       instance.style()
         .selector("node").style("font-size", Math.min(10, 12 / z))
-        .selector('node[kind = "org"]').style("font-size", Math.min(20, 14 / z))
+        .selector('node[kind = "org"]').style("font-size", Math.min(16, 15 / z))
+        .selector('node[kind = "office"]').style("font-size", Math.min(11, 12 / z))
         .selector('node[kind = "issue"]').style("font-size", Math.min(18, 14 / z))
         .selector('node[kind = "owner"]').style("font-size", Math.min(22, 15 / z))
         .selector("node.hit").style("font-size", Math.min(14, 14 / z))
@@ -274,7 +217,7 @@ export default function Network() {
     const node = cy.current.getElementById(`c:${focus}`);
     if (node.nonempty()) {
       highlight(cy.current, node);
-      zoomTo(cy.current, node.closedNeighborhood().closedNeighborhood());
+      zoomTo(cy.current, related(node));
       const c = latest.current.contacts.find((x) => x.id === Number(focus));
       if (c) setPicked({ kind: "contact", contact: c });
     }
@@ -289,9 +232,13 @@ export default function Network() {
     const hits = inst.nodes().filter((n) => String(n.data("label")).toLowerCase().includes(q.toLowerCase()));
     if (hits.empty()) return;
     inst.elements().addClass("faded");
-    hits.closedNeighborhood().removeClass("faded");
+    let near = inst.collection();
+    hits.forEach((n) => {
+      near = near.union(related(n));
+    });
+    near.removeClass("faded");
     hits.addClass("hit");
-    zoomTo(inst, hits.closedNeighborhood());
+    zoomTo(inst, near);
   };
 
   const toggleLayer = (l: Layer) =>
@@ -376,7 +323,7 @@ export default function Network() {
               </>
             ) : (
               <>
-                <div className="muted small">{picked.kind === "org" ? "Organization" : picked.kind === "issue" ? "Issue" : "Relationship owner"}</div>
+                <div className="muted small">{picked.kind === "org" ? "Organization" : picked.kind === "office" ? "Office / department" : picked.kind === "issue" ? "Issue" : "Relationship owner"}</div>
                 <h3>{picked.label}</h3>
                 <p className="small">{picked.members.length} contact{picked.members.length === 1 ? "" : "s"}</p>
                 <ul className="plain small scroll">
@@ -411,37 +358,52 @@ function zoomTo(cy: Core, eles: cytoscape.CollectionReturnValue) {
   cy.animate({ zoom, pan }, { duration: 300 });
 }
 
+/**
+ * What to show around a tapped node. A box: everyone in it. A person: their box and
+ * box-mates, plus anyone one or two lines away (people sharing an issue or owner, and
+ * personal connections). A hub: its people.
+ */
+function related(node: cytoscape.NodeSingular | cytoscape.CollectionReturnValue): cytoscape.CollectionReturnValue {
+  const n = node as cytoscape.NodeSingular;
+  if (n.isParent?.()) return n.union(n.descendants()).union(n.ancestors()).union(n.descendants().connectedEdges());
+  const hood = n.closedNeighborhood().closedNeighborhood();
+  const box = n.parent();
+  return hood.union(n.ancestors()).union(box.nonempty() ? box.descendants() : n.cy().collection()).union(hood.ancestors());
+}
+
 function highlight(cy: Core, node: cytoscape.NodeSingular | cytoscape.CollectionReturnValue) {
   cy.elements().removeClass("faded hit").addClass("faded");
-  const hood = node.closedNeighborhood();
-  // Two hops from a person reaches the people they share an org, issue, or owner with.
-  hood.closedNeighborhood().removeClass("faded");
+  related(node).removeClass("faded");
   node.addClass("hit");
 }
 
-/** What the lines and hub shapes mean, for the layers currently drawn. */
+/** What the boxes, lines and hub shapes mean, for the layers currently drawn. */
 function LineKey({ layers }: { layers: Set<Layer> }) {
-  const items: [Layer, string, string][] = [
-    ["org", "Same organization", "Organization"],
-    ["issue", "Shared issue", "Issue"],
-    ["owner", "Same FSI relationship owner", "Relationship owner"],
-    ["personal", "Who knows who (personal connection)", ""],
+  const lines: [Exclude<Layer, "org">, string][] = [
+    ["issue", "Shared issue"],
+    ["owner", "Same FSI relationship owner"],
+    ["personal", "Who knows who (personal connection)"],
   ];
-  const shown = items.filter(([l]) => layers.has(l));
-  if (!shown.length) return null;
+  const shownLines = lines.filter(([l]) => layers.has(l));
   return (
     <div className="legend line-key">
-      <span className="muted small">Lines:</span>
-      {shown.map(([l, label]) => (
+      {layers.has("org") && (
+        <>
+          <span className="muted small">Boxes:</span>
+          <span className="legend-item static"><i className="box box-org" />Organization</span>
+          <span className="legend-item static"><i className="box box-office" />Office / department inside it</span>
+        </>
+      )}
+      {shownLines.length > 0 && <span className="muted small">Lines:</span>}
+      {shownLines.map(([l, text]) => (
         <span key={l} className="legend-item static">
-          <i className={`line line-${l}`} style={{ borderTopColor: LINE[l] }} />{label}
+          <i className={`line line-${l}`} style={{ borderTopColor: LINE[l] }} />{text}
         </span>
       ))}
       <span className="muted small">Shapes:</span>
       <span className="legend-item static"><i className="dot" />Person (color = type)</span>
-      {shown.filter(([, , hub]) => hub).map(([l, , hub]) => (
-        <span key={l} className="legend-item static"><i className={`hub hub-${l}`} />{hub}</span>
-      ))}
+      {layers.has("issue") && <span className="legend-item static"><i className="hub hub-issue" />Issue</span>}
+      {layers.has("owner") && <span className="legend-item static"><i className="hub hub-owner" />Relationship owner</span>}
     </div>
   );
 }
