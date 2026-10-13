@@ -177,3 +177,13 @@ describe("categories and connection words", () => {
     expect(normalizeConnectionKind("")).toBe("Other");
   });
 });
+
+describe("last saved", () => {
+  it("reads the Updated At text and Excel date numbers", async () => {
+    const { savedTime } = await import("../lib/store");
+    expect(savedTime("2026-10-08 16:52:46 UTC")?.toISOString()).toBe("2026-10-08T16:52:46.000Z");
+    expect(savedTime("46303.5")?.toISOString()).toBe("2026-10-08T12:00:00.000Z");
+    expect(savedTime(null)).toBeNull();
+    expect(savedTime("not a date")).toBeNull();
+  });
+});

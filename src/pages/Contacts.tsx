@@ -1,16 +1,18 @@
 import { useMemo, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
-import { addDays, can, errorText, formatDate, isOwner, today, useStore } from "../lib/store";
+import { addDays, can, errorText, formatDate, formatSaved, isOwner, savedTime, today, useStore } from "../lib/store";
 import { Empty, FollowUp, StatusBadge, initials } from "../components/ui";
 import { RELATIONSHIP_TYPES as RELATIONSHIP_TYPE_CHOICES, STATUSES, contactTypes, splitIssues, typeOptions, type Contact, type User } from "../../shared/constants";
 
-type SortKey = "name" | "organization" | "status" | "owner" | "lastContact" | "nextFollowUp" | "dateAdded";
+type SortKey = "name" | "organization" | "status" | "owner" | "lastContact" | "nextFollowUp" | "dateAdded" | "updatedAt" | "updatedBy";
 
 /** Choices for the Sort menu (the table headers sort too). "added" is newest first. */
 const SORTS: { value: string; label: string; key: SortKey; dir: 1 | -1 }[] = [
   { value: "name", label: "Name A–Z", key: "name", dir: 1 },
   { value: "added", label: "Date added (newest first)", key: "dateAdded", dir: -1 },
   { value: "added-old", label: "Date added (oldest first)", key: "dateAdded", dir: 1 },
+  { value: "saved", label: "Last saved (newest first)", key: "updatedAt", dir: -1 },
+  { value: "saved-by", label: "Last saved by", key: "updatedBy", dir: 1 },
   { value: "org", label: "Organization", key: "organization", dir: 1 },
   { value: "last", label: "Last contact (recent first)", key: "lastContact", dir: -1 },
   { value: "follow", label: "Follow-up (soonest first)", key: "nextFollowUp", dir: 1 },
@@ -74,6 +76,8 @@ export default function Contacts() {
     const val = (c: Contact): string => {
       switch (sort.key) {
         case "owner": return c.owner ?? "\uffff";
+        case "updatedAt": return savedTime(c.updatedAt)?.toISOString() ?? "\uffff";
+        case "updatedBy": return c.updatedBy ?? "\uffff";
         case "status": return String(STATUSES.indexOf(c.status as (typeof STATUSES)[number]));
         default: return (c[sort.key] ?? "\uffff") as string;
       }
@@ -87,7 +91,7 @@ export default function Contacts() {
     });
   }, [contacts, q, type, status, owner, due, issue, org, dup, dupIds, sort]);
 
-  const toggleSort = (key: SortKey) => setSort((s) => ({ key, dir: s.key === key ? (s.dir === 1 ? -1 : 1) : key === "dateAdded" || key === "lastContact" ? -1 : 1 }));
+  const toggleSort = (key: SortKey) => setSort((s) => ({ key, dir: s.key === key ? (s.dir === 1 ? -1 : 1) : key === "dateAdded" || key === "lastContact" || key === "updatedAt" ? -1 : 1 }));
   const sortValue = SORTS.find((s) => s.key === sort.key && s.dir === sort.dir)?.value ?? "";
   const toggle = (id: number) =>
     setSelected((s) => {
@@ -262,6 +266,8 @@ export default function Contacts() {
                   <Th k="lastContact">Last contact</Th>
                   <Th k="nextFollowUp">Follow-up</Th>
                   <Th k="dateAdded">Added</Th>
+                  <Th k="updatedAt">Last saved</Th>
+                  <Th k="updatedBy">Saved by</Th>
                 </tr>
               </thead>
               <tbody>
@@ -283,6 +289,8 @@ export default function Contacts() {
                     <td className="small">{formatDate(c.lastContact)}</td>
                     <td className="small"><FollowUp date={c.nextFollowUp} /></td>
                     <td className="small">{formatDate(c.dateAdded)}</td>
+                    <td className="small nowrap">{formatSaved(c.updatedAt) || <span className="muted">Not saved in the app</span>}</td>
+                    <td className="small">{c.updatedBy ?? ""}</td>
                   </tr>
                 ))}
               </tbody>
@@ -297,6 +305,9 @@ export default function Contacts() {
                   <div className="row-title">{c.name}{c.restricted && " 🔒"}{dupIds.has(c.id) && <span className="badge warn">⚠</span>}</div>
                   <div className="muted small">{[c.organization, c.office].filter(Boolean).join(" · ") || contactTypes(c).join(", ")}</div>
                   {sort.key === "dateAdded" && <div className="muted small">Added {formatDate(c.dateAdded) || "date unknown"}</div>}
+                  {(sort.key === "updatedAt" || sort.key === "updatedBy") && (
+                    <div className="muted small">{c.updatedAt ? `Saved ${formatSaved(c.updatedAt)}${c.updatedBy ? ` by ${c.updatedBy}` : ""}` : "Not saved in the app yet"}</div>
+                  )}
                   <div className="small"><StatusBadge status={c.status} /> {c.owner && <span className="muted">· {c.owner}</span>}</div>
                 </div>
                 {c.nextFollowUp && <span className="small"><FollowUp date={c.nextFollowUp} /></span>}
