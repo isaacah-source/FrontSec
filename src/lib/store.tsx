@@ -182,4 +182,25 @@ export function formatDate(iso: string | null) {
   return d.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
 }
 
+/**
+ * When a contact was last saved, from its Updated At cell ("2026-10-08 16:52:46 UTC", or an
+ * Excel date number if someone retyped it). Null when unknown.
+ */
+export function savedTime(v: string | null): Date | null {
+  if (!v) return null;
+  const s = v.trim();
+  if (/^\d+(\.\d+)?$/.test(s)) {
+    const n = Number(s);
+    return n > 20000 && n < 80000 ? new Date(Date.UTC(1899, 11, 30) + n * 86400_000) : null;
+  }
+  const d = new Date(s.replace(/\s*UTC$/i, "Z").replace(" ", "T"));
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+/** "Oct 8, 2026, 12:52 PM" in the viewer's time zone. */
+export function formatSaved(v: string | null): string {
+  const d = savedTime(v);
+  return d ? d.toLocaleString(undefined, { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" }) : "";
+}
+
 export const errorText = (e: unknown) => (e instanceof Error ? e.message : "Something went wrong.");

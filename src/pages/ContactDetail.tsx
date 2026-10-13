@@ -1,6 +1,6 @@
 import { useMemo, useState, type FormEvent } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { addDays, can, canEditContact, errorText, formatDate, isOwner, today, useStore } from "../lib/store";
+import { addDays, can, canEditContact, errorText, formatDate, formatSaved, isOwner, today, useStore } from "../lib/store";
 import { Empty, Field, FollowUp, StatusBadge, initials } from "../components/ui";
 import { ContactPicker } from "../components/ContactPicker";
 import { ownerNames } from "./Contacts";
@@ -138,7 +138,7 @@ export default function ContactDetail() {
             <dt>Last contact</dt><dd>{formatDate(c.lastContact) || <span className="muted">Never logged</span>}</dd>
             {c.referredByName && (<><dt>Referred by</dt><dd>{c.referredByName}{c.referredByRole ? ` (${c.referredByRole})` : ""}</dd></>)}
             <dt>Added</dt><dd>{formatDate(c.dateAdded)}{c.addedBy ? ` by ${c.addedBy}` : ""}</dd>
-            {c.updatedAt && (<><dt>Last edit</dt><dd className="small">{c.updatedBy ?? "Someone"} · {c.updatedAt}</dd></>)}
+            {c.updatedAt && (<><dt>Last saved</dt><dd className="small">{formatSaved(c.updatedAt) || c.updatedAt} by {c.updatedBy ?? "someone"}</dd></>)}
           </dl>
         </section>
 
