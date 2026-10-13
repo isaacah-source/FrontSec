@@ -245,7 +245,7 @@ export default function Contacts() {
       ) : (
         <>
           <div className="table-wrap desktop-only">
-            <table className="contacts">
+            <table className="contacts list-table">
               <thead>
                 <tr>
                   {bulkMode && (
@@ -283,13 +283,21 @@ export default function Contacts() {
                       {dupIds.has(c.id) && <span className="badge warn" title="Possible duplicate">⚠</span>}
                     </td>
                     <td>{c.organization}{c.office && <div className="muted small">{c.office}</div>}</td>
-                    <td className="small">{contactTypes(c).join(", ")}</td>
+                    {/* A zero-width space after each "/" lets long types like Policy/NatSec/Gov wrap. */}
+                    <td className="small">{contactTypes(c).join(", ").replace(/\//g, "/\u200b")}</td>
                     <td><StatusBadge status={c.status} /></td>
                     <td>{c.owner ?? <span className="muted">Unassigned</span>}</td>
                     <td className="small">{formatDate(c.lastContact)}</td>
-                    <td className="small"><FollowUp date={c.nextFollowUp} /></td>
+                    <td className="small"><FollowUp date={c.nextFollowUp} compact /></td>
                     <td className="small">{formatDate(c.dateAdded)}</td>
-                    <td className="small nowrap">{formatSaved(c.updatedAt) || <span className="muted">Not saved in the app</span>}</td>
+                    <td className="small">
+                      {savedTime(c.updatedAt) ? (
+                        <>
+                          <div className="nowrap">{savedTime(c.updatedAt)!.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}</div>
+                          <div className="muted nowrap">{savedTime(c.updatedAt)!.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}</div>
+                        </>
+                      ) : <span className="muted">Not yet</span>}
+                    </td>
                     <td className="small">{c.updatedBy ?? ""}</td>
                   </tr>
                 ))}

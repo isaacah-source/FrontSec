@@ -26,10 +26,12 @@ export function StatusBadge({ status }: { status: string | null }) {
   return <span className={`badge ${STATUS_CLASS[status] ?? ""}`}>{status}</span>;
 }
 
-export function FollowUp({ date }: { date: string | null }) {
-  if (!date) return <span className="muted">No follow-up set</span>;
+/** `compact` drops the leading words, for narrow table cells. */
+export function FollowUp({ date, compact }: { date: string | null; compact?: boolean }) {
+  if (!date) return <span className="muted">{compact ? "None" : "No follow-up set"}</span>;
   const t = today();
   const cls = date < t ? "overdue" : date === t ? "due" : "";
+  if (compact) return <span className={cls}>{date === t ? "Today" : formatDate(date)}{date < t && <span className="tiny"> overdue</span>}</span>;
   return <span className={cls}>{date < t ? "Overdue: " : date === t ? "Due today" : "Follow up "}{date === t ? "" : formatDate(date)}</span>;
 }
 
