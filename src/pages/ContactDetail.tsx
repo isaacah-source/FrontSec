@@ -4,7 +4,7 @@ import { addDays, can, canEditContact, errorText, formatDate, formatSaved, isOwn
 import { Empty, Field, FollowUp, StatusBadge, initials } from "../components/ui";
 import { ContactPicker } from "../components/ContactPicker";
 import { ownerNames } from "./Contacts";
-import { CONNECTION_KINDS, INTERACTION_TYPES, STATUSES, contactTypes, splitIssues, type Contact } from "../../shared/constants";
+import { CONNECTION_KINDS, INTERACTION_TYPES, STATUSES, contactTypes, parseExtras, splitIssues, type Contact } from "../../shared/constants";
 
 export default function ContactDetail() {
   const id = Number(useParams().id);
@@ -145,8 +145,28 @@ export default function ContactDetail() {
         <section className="card">
           <h2>Contact info</h2>
           <dl className="facts">
-            {c.email && (<><dt>Email</dt><dd><a href={`mailto:${c.email}`}>{c.email}</a></dd></>)}
-            {c.phone && (<><dt>Phone</dt><dd><a href={`tel:${c.phone}`}>{c.phone}</a></dd></>)}
+            {(c.email || c.otherEmails) && (
+              <>
+                <dt>Email</dt>
+                <dd className="stack">
+                  {c.email && <a href={`mailto:${c.email}`}>{c.email}</a>}
+                  {parseExtras(c.otherEmails).map((x) => (
+                    <span key={x.value}><a href={`mailto:${x.value}`}>{x.value}</a>{x.label && <span className="muted small"> · {x.label}</span>}</span>
+                  ))}
+                </dd>
+              </>
+            )}
+            {(c.phone || c.otherPhones) && (
+              <>
+                <dt>Phone</dt>
+                <dd className="stack">
+                  {c.phone && <a href={`tel:${c.phone.replace(/[^\d+]/g, "")}`}>{c.phone}</a>}
+                  {parseExtras(c.otherPhones).map((x) => (
+                    <span key={x.value}><a href={`tel:${x.value.replace(/[^\d+]/g, "")}`}>{x.value}</a>{x.label && <span className="muted small"> · {x.label}</span>}</span>
+                  ))}
+                </dd>
+              </>
+            )}
             {c.geo && (<><dt>Location</dt><dd>{c.geo}</dd></>)}
             {c.address && (<><dt>Address</dt><dd>{c.address}</dd></>)}
             {c.website && (<><dt>Website</dt><dd><a href={c.website.startsWith("http") ? c.website : `https://${c.website}`} target="_blank" rel="noreferrer">{c.website}</a></dd></>)}

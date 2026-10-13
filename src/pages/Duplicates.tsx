@@ -3,7 +3,7 @@ import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { ConflictError } from "../lib/repo";
 import { can, errorText, formatDate, useStore } from "../lib/store";
 import { Empty } from "../components/ui";
-import { contactTypes, splitIssues, type Contact } from "../../shared/constants";
+import { allEmails, allPhones, contactTypes, joinExtras, parseExtras, splitIssues, type Contact, type LabeledValue } from "../../shared/constants";
 
 /** Every likely duplicate pair, with Compare and "Not the same person". */
 export default function Duplicates() {
@@ -70,7 +70,7 @@ function Brief({ c }: { c: Contact }) {
     <div className="dup-brief">
       <Link className="strong" to={`/contacts/${c.id}`}>{c.name}</Link>
       <div className="muted small">{[c.title, c.organization, c.office].filter(Boolean).join(" · ")}</div>
-      <div className="small">{[c.email, c.phone].filter(Boolean).join(" · ")}</div>
+      <div className="small">{[...allEmails(c), ...allPhones(c)].join(" · ")}</div>
       <div className="muted small">ID {c.id} · added {formatDate(c.dateAdded) || "date unknown"}{c.owner ? ` · owner ${c.owner}` : ""}</div>
     </div>
   );
@@ -88,7 +88,7 @@ const FIELDS: [Key, string][] = [
   ["restricted", "Restricted"],
 ];
 /** Fields whose two values can be kept together. */
-const LISTS: [Key, string][] = [["otherTypes", "Other categories"], ["interestArea", "Interest area"], ["tags", "Tags"], ["notes", "Notes"]];
+const LISTS: [Key, string][] = [["otherEmails", "Other emails"], ["otherPhones", "Other phones"], ["otherTypes", "Other categories"], ["interestArea", "Interest area"], ["tags", "Tags"], ["notes", "Notes"]];
 
 const show = (v: unknown) => (typeof v === "boolean" ? (v ? "Yes" : "No") : v ? String(v) : "");
 
@@ -125,6 +125,21 @@ export function MergeContacts() {
     const otherTypes = contactTypes({ relationshipType: null, otherTypes: [keep.relationshipType, keep.otherTypes, drop.relationshipType, drop.otherTypes].filter(Boolean).join("; ") })
       .filter((t) => t !== out.relationshipType);
     out.otherTypes = otherTypes.join("; ") || null;
+    // Keep every address and number from both; the one picked as main is not repeated.
+    const pool = (main: Key, extra: Key, same: (x: string, y: string) => boolean) => {
+      const list: LabeledValue[] = [];
+      for (const c of [keep, drop]) {
+        for (const x of [{ label: "", value: (c[main] as string | null) ?? "" }, ...parseExtras(c[extra] as string | null)]) {
+          if (!x.value.trim() || same(x.value, String(out[main] ?? ""))) continue;
+          const at = list.findIndex((y) => same(y.value, x.value));
+          if (at < 0) list.push(x);
+          else if (!list[at].label && x.label) list[at] = x;
+        }
+      }
+      return joinExtras(list);
+    };
+    out.otherEmails = pool("email", "otherEmails", (x, y) => x.trim().toLowerCase() === y.trim().toLowerCase());
+    out.otherPhones = pool("phone", "otherPhones", (x, y) => x.replace(/\D/g, "") === y.replace(/\D/g, "") && x.replace(/\D/g, "") !== "");
     out.interestArea = splitIssues(keep.interestArea, drop.interestArea).join("; ") || null;
     out.tags = splitIssues(keep.tags, drop.tags).join("; ") || null;
     out.notes = [keep.notes, drop.notes && drop.notes !== keep.notes ? `[Merged from ${drop.name}, ID ${drop.id}] ${drop.notes}` : null].filter(Boolean).join("\n\n") || null;

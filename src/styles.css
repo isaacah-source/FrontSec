@@ -314,3 +314,9 @@ label.pick input { width: auto; margin-top: 3px; }
 .legend-item i.box { width: 16px; height: 11px; border-radius: 3px; border: 1.5px solid #8796ad; background: #eef2f8; }
 .legend-item i.box-office { border: 1px dashed #a9b5c7; background: #fff; }
 .nowrap { white-space: nowrap; }
+
+/* Extra emails and phones */
+dd.stack { display: flex; flex-direction: column; gap: 2px; }
+.extras { display: flex; flex-direction: column; gap: 6px; margin-top: 6px; align-items: flex-start; }
+.extra-row { display: grid; grid-template-columns: auto 1fr auto; gap: 6px; align-items: center; width: 100%; }
+.extra-row select { width: auto; }

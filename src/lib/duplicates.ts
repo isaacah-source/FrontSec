@@ -1,4 +1,4 @@
-import type { Contact, DuplicateMark } from "../../shared/constants";
+import { allEmails, allPhones, type Contact, type DuplicateMark } from "../../shared/constants";
 
 /**
  * Finds contacts that are probably the same person: same email, same phone, the same name
@@ -88,16 +88,16 @@ export function findDuplicates(contacts: Contact[], marks: DuplicateMark[]): Dup
     found.set(k, p);
   };
 
-  const groups = (keyOf: (c: Contact) => string | null, reason: string) => {
+  // Every address and number counts, not just the main ones.
+  const groups = (keysOf: (c: Contact) => string[], reason: string) => {
     const m = new Map<string, Contact[]>();
     for (const c of contacts) {
-      const k = keyOf(c);
-      if (k) m.set(k, [...(m.get(k) ?? []), c]);
+      for (const k of new Set(keysOf(c))) if (k) m.set(k, [...(m.get(k) ?? []), c]);
     }
     for (const g of m.values()) for (let i = 0; i < g.length; i++) for (let j = i + 1; j < g.length; j++) add(g[i], g[j], reason);
   };
-  groups((c) => c.email?.trim().toLowerCase() || null, "same email");
-  groups((c) => (digits(c.phone).length >= 7 ? digits(c.phone) : null), "same phone");
+  groups((c) => allEmails(c).map((e) => e.toLowerCase()), "same email");
+  groups((c) => allPhones(c).map((p) => digits(p)).filter((p) => p.length >= 7), "same phone");
 
   // Names: compare within the same last name, and catch typos across close spellings.
   const parts = contacts.map((c) => ({ c, ...nameParts(c.name) }));

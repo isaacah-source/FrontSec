@@ -50,6 +50,8 @@ const MASTER_COLUMNS: [string, Field][] = [
   ["Updated By", "updatedBy"],
   ["Other Types", "otherTypes"],
   ["Office / Department", "office"],
+  ["Other Emails", "otherEmails"],
+  ["Other Phones", "otherPhones"],
 ];
 const SYNTHETIC_ID = 1_000_000;
 const DATE_FIELDS = new Set<Field>(["lastContact", "nextFollowUp", "dateAdded"]);
@@ -491,7 +493,7 @@ function blankContact(): Omit<Contact, "id" | "name"> {
     title: null, organization: null, relationshipType: null, status: null, owner: null, email: null, phone: null,
     geo: null, interestArea: null, international: false, restricted: false, referredByName: null, referredByRole: null,
     lastContact: null, nextFollowUp: null, dateAdded: null, addedBy: null, notes: null, tags: null, linkedin: null,
-    address: null, website: null, otherTypes: null, office: null, updatedAt: null, updatedBy: null,
+    address: null, website: null, otherTypes: null, office: null, otherEmails: null, otherPhones: null, updatedAt: null, updatedBy: null,
   };
 }
 

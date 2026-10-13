@@ -50,7 +50,7 @@ describe("setup", () => {
     await repo.setup();
     const master = io.sheets.get("Master")!;
     expect(master[0].slice(0, 20)).toEqual(HEADER);
-    expect(master[0].slice(20)).toEqual(["Title", "LinkedIn", "Website", "Address", "Updated At", "Updated By", "Other Types", "Office / Department"]);
+    expect(master[0].slice(20)).toEqual(["Title", "LinkedIn", "Website", "Address", "Updated At", "Updated By", "Other Types", "Office / Department", "Other Emails", "Other Phones"]);
     const s = await repo.load();
     expect(s.initialized).toBe(true);
     expect(s.users).toEqual([{ email: me.email, name: me.name, role: "admin", active: true }]);

@@ -7,13 +7,14 @@ import { Field } from "../components/ui";
 import { CardText } from "../components/CardText";
 import { takeSharedText } from "../lib/sharedText";
 import { parseCardText } from "../../shared/cardParse";
-import { RELATIONSHIP_TYPES, STATUSES, type Contact } from "../../shared/constants";
+import { EMAIL_LABELS, PHONE_LABELS, allEmails, joinExtras, parseExtras, RELATIONSHIP_TYPES, STATUSES, type Contact } from "../../shared/constants";
+import { ExtraValues } from "../components/ExtraValues";
 
 type Form = Record<string, string | boolean | number | null>;
 
 const BLANK: Form = {
   name: "", title: "", organization: "", office: "", relationshipType: "", otherTypes: "", status: "Not yet engaged", owner: "",
-  email: "", phone: "", geo: "", interestArea: "", tags: "", international: false, restricted: false,
+  email: "", phone: "", otherEmails: "", otherPhones: "", geo: "", interestArea: "", tags: "", international: false, restricted: false,
   referredByName: "", referredByRole: "", lastContact: "", nextFollowUp: "", dateAdded: "", notes: "", linkedin: "", website: "", address: "",
 };
 
@@ -51,7 +52,7 @@ export default function ContactForm() {
       setDupes([]);
       return;
     }
-    setDupes(contacts.filter((c) => (name.length >= 3 && c.name.toLowerCase() === name) || (email && c.email?.toLowerCase() === email)));
+    setDupes(contacts.filter((c) => (name.length >= 3 && c.name.toLowerCase() === name) || (email && allEmails(c).some((e) => e.toLowerCase() === email))));
   }, [form.name, form.email, editingId, contacts]);
 
   if (editingId && !existing) return <div className="page"><p>Contact not found.</p></div>;
@@ -103,7 +104,17 @@ export default function ContactForm() {
     setBusy(true);
     setError("");
     const changes: Record<string, unknown> = {};
-    for (const [k, v] of Object.entries(form)) {
+    // With the main Email or Phone blank, the first extra one moves up to it, so Call and
+    // Email buttons and the category tabs still have a value.
+    const filled = { ...form };
+    for (const [main, extra] of [["email", "otherEmails"], ["phone", "otherPhones"]] as const) {
+      const list = parseExtras(String(filled[extra] ?? ""));
+      if (!String(filled[main] ?? "").trim() && list.length) {
+        filled[main] = list[0].value;
+        filled[extra] = joinExtras(list.slice(1)) ?? "";
+      }
+    }
+    for (const [k, v] of Object.entries(filled)) {
       const value = typeof v === "string" ? v.trim() || null : v;
       const before = typeof base[k] === "string" ? (base[k] as string).trim() || null : base[k];
       if (!editingId || value !== before) changes[k] = value;
@@ -204,8 +215,17 @@ export default function ContactForm() {
             {ownerChoices.map((n) => <option key={n}>{n}</option>)}
           </select>
         </Field>
-        <Field label="Email">{text("email", { type: "email", inputMode: "email" })}</Field>
-        <Field label="Phone">{text("phone", { type: "tel", inputMode: "tel" })}</Field>
+        {/* Not <Field>: a <label> would send clicks on the extra rows' buttons to the first input. */}
+        <div className="field">
+          <span className="field-label">Email</span>
+          {text("email", { type: "email", inputMode: "email", "aria-label": "Email" })}
+          <ExtraValues kind="email" labels={EMAIL_LABELS} value={String(form.otherEmails ?? "")} onChange={(v) => set("otherEmails", v)} />
+        </div>
+        <div className="field">
+          <span className="field-label">Phone</span>
+          {text("phone", { type: "tel", inputMode: "tel", "aria-label": "Phone" })}
+          <ExtraValues kind="phone" labels={PHONE_LABELS} value={String(form.otherPhones ?? "")} onChange={(v) => set("otherPhones", v)} />
+        </div>
         <Field label="Location (Geo)">{text("geo")}</Field>
         <Field label="Interest area">{text("interestArea", { placeholder: "Separate issues with ;" })}</Field>
         <Field label="Tags / category">{text("tags", { placeholder: "e.g. Fundraising, National Security" })}</Field>

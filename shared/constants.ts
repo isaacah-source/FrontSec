@@ -99,6 +99,9 @@ export interface Contact {
   owner: string | null;
   email: string | null;
   phone: string | null;
+  /** More addresses and numbers beyond the main Email and Phone, as "Label: value; Label: value". */
+  otherEmails: string | null;
+  otherPhones: string | null;
   geo: string | null;
   interestArea: string | null;
   international: boolean;
@@ -171,4 +174,51 @@ export function splitIssues(...values: (string | null | undefined)[]): string[] 
     }
   }
   return [...out.values()];
+}
+
+export const EMAIL_LABELS = ["Work", "Personal", "Assistant", "Other"] as const;
+export const PHONE_LABELS = ["Mobile", "Work", "Office", "Home", "Assistant", "Other"] as const;
+
+export interface LabeledValue {
+  label: string;
+  value: string;
+}
+
+/** Reads an Other Emails / Other Phones cell: "Mobile: 202-555-0100; Personal: a@b.org". */
+export function parseExtras(v: string | null | undefined): LabeledValue[] {
+  return (v ?? "")
+    .split(/;|\n/)
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .map((part) => {
+      const m = /^([A-Za-z][A-Za-z ]{0,19}):\s*(.+)$/.exec(part);
+      return m && !/^(https?|mailto|tel)$/i.test(m[1]) ? { label: m[1].trim(), value: m[2].trim() } : { label: "", value: part };
+    });
+}
+
+/** Writes entries back to one cell, dropping blanks. */
+export function joinExtras(list: LabeledValue[]): string | null {
+  const out = list.filter((x) => x.value.trim()).map((x) => (x.label ? `${x.label}: ${x.value.trim()}` : x.value.trim()));
+  return out.length ? out.join("; ") : null;
+}
+
+/** Every email address on a contact, main one first, without repeats. */
+export function allEmails(c: { email: string | null; otherEmails?: string | null }): string[] {
+  const out: string[] = [];
+  for (const v of [c.email ?? "", ...parseExtras(c.otherEmails).map((x) => x.value)]) {
+    const e = v.trim();
+    if (e && !out.some((x) => x.toLowerCase() === e.toLowerCase())) out.push(e);
+  }
+  return out;
+}
+
+/** Every phone number on a contact, main one first, without repeats (compared by digits). */
+export function allPhones(c: { phone: string | null; otherPhones?: string | null }): string[] {
+  const out: string[] = [];
+  const digits = (p: string) => p.replace(/\D/g, "");
+  for (const v of [c.phone ?? "", ...parseExtras(c.otherPhones).map((x) => x.value)]) {
+    const p = v.trim();
+    if (p && !out.some((x) => digits(x) === digits(p))) out.push(p);
+  }
+  return out;
 }

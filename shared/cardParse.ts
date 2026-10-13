@@ -18,7 +18,18 @@ export interface ParsedCard {
   linkedin: string;
   address: string;
   geo: string;
+  /** Further numbers and addresses on the card, as "Office: 703.555.0100; ..." */
+  otherPhones: string;
+  otherEmails: string;
   other: string;
+}
+
+/** The word printed just before a number ("M:", "Tel.", "Office") as a phone label. */
+function phoneLabel(before: string): "Mobile" | "Office" | "Fax" | "" {
+  if (/\b(m|mob|mobile|cell|c)\b\W*$/i.test(before)) return "Mobile";
+  if (/\b(f|fax)\b\W*$/i.test(before)) return "Fax";
+  if (/\b(o|off|office|t|tel|telephone|p|ph|phone|w|work|d|direct|main)\b\W*$/i.test(before)) return "Office";
+  return "";
 }
 
 const TITLE_WORDS =
@@ -126,7 +137,8 @@ function repairEmail(line: string): string {
   if (!line.includes("@")) return line;
   return line
     .replace(/(\S+\.)\s+(?=\S*@)/g, "$1")
-    .replace(/@(\S+?)\.?\s+(\S+\.(?:gov|com|org|net|edu|mil|int|io|ai|us|uk|co)\b)/gi, "@$1.$2");
+    // The second piece must not be another address ("a@x.org b@y.com" are two emails).
+    .replace(/@(\S+?)\.?\s+([^\s@]+\.(?:gov|com|org|net|edu|mil|int|io|ai|us|uk|co)\b)(?!@)/gi, "@$1.$2");
 }
 const fixEmailLetters = (email: string) => email.toLowerCase().replace(/(?<=[a-z])1(?=[a-z])/g, "i").replace(/(?<=[a-z])0(?=[a-z])/g, "o");
 
@@ -144,8 +156,10 @@ function matchesDomain(line: string, domain: string): boolean {
 
 export function parseCardText(text: string, fallbackOrgFromEmail = true): ParsedCard {
   const out: ParsedCard = {
-    name: "", title: "", organization: "", email: "", phone: "", website: "", linkedin: "", address: "", geo: "", other: "",
+    name: "", title: "", organization: "", email: "", phone: "", website: "", linkedin: "", address: "", geo: "", otherPhones: "", otherEmails: "", other: "",
   };
+  const phones: { label: string; value: string }[] = [];
+  const emails: string[] = [];
   const lines = text
     .split(/\r?\n/)
     .map((l) => fixSmallCaps(repairEmail(l.replace(/[|•·‘’“”`]+/g, " ").replace(/\s+/g, " ").trim())))
@@ -155,10 +169,10 @@ export function parseCardText(text: string, fallbackOrgFromEmail = true): Parsed
 
   for (const line of lines) {
     let rest = line;
-    const email = rest.match(EMAIL);
-    if (email) {
-      if (!out.email) out.email = fixEmailLetters(email[0]);
-      rest = rest.replace(email[0], "").trim();
+    for (const m of rest.match(new RegExp(EMAIL.source, "gi")) ?? []) {
+      const e = fixEmailLetters(m);
+      if (!emails.some((x) => x.toLowerCase() === e.toLowerCase())) emails.push(e);
+      rest = rest.replace(m, "").trim();
     }
     if (/linkedin/i.test(rest)) {
       out.linkedin ||= rest.replace(/^.*?(linkedin\.com\S*|in\/\S+).*$/i, "$1");
@@ -170,11 +184,16 @@ export function parseCardText(text: string, fallbackOrgFromEmail = true): Parsed
       if (!out.website) out.website = url[1].toLowerCase().replace(/^(https?:\/\/)?w{2,}\./, "$1www.");
       rest = rest.replace(url[0], "").trim();
     }
-    const phone = rest.match(PHONE);
-    if (phone && phone[1].replace(/\D/g, "").length >= 10) {
-      const label = /\b(m|mobile|cell|c)\b[:.]?/i.test(rest);
-      if (!out.phone || label) out.phone = phone[1].trim();
-      else extra.push(rest);
+    // Every number on the line, each with the word printed before it ("M: ... O: ...").
+    const found = [...rest.matchAll(new RegExp(PHONE.source, "g"))].filter((m) => m[1].replace(/\D/g, "").length >= 10);
+    if (found.length) {
+      let from = 0;
+      for (const m of found) {
+        const label = phoneLabel(rest.slice(from, m.index));
+        from = (m.index ?? 0) + m[0].length;
+        if (label === "Fax") extra.push(`Fax: ${m[1].trim()}`);
+        else phones.push({ label, value: m[1].trim() });
+      }
       continue;
     }
     if (STREET.test(rest) || CITY_STATE.test(rest) || /^(suite|ste\.?|floor|fl\.?|room|rm\.?|unit|p\.?o\.? box)\s*\w+/i.test(rest)) {
@@ -197,6 +216,15 @@ export function parseCardText(text: string, fallbackOrgFromEmail = true): Parsed
     }
     if (rest) left.push(rest);
   }
+
+  // A mobile number is the most direct line, so it becomes the main Phone; the rest are kept.
+  const main = phones.find((x) => x.label === "Mobile") ?? phones[0];
+  if (main) out.phone = main.value;
+  out.otherPhones = phones.filter((x) => x !== main && x.value.replace(/\D/g, "") !== main.value.replace(/\D/g, ""))
+    .map((x) => (x.label ? `${x.label}: ${x.value}` : x.value)).join("; ");
+  out.email = emails[0] ?? "";
+  out.otherEmails = emails.slice(1).join("; ");
+
 
   // The email usually holds the surname ("kharrington" -> "Harrington") and the domain the
   // organization ("potomacinstitute.org"). Prefer lines that agree with them; seals and logos
