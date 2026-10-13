@@ -69,7 +69,7 @@ textarea { resize: vertical; }
   .sidebar-foot { margin-top: auto; padding: 0 10px; font-size: 0.85rem; }
   .sidebar-foot .muted { color: #a9b8d0; }
   .sidebar-foot .linkish { color: #cfe0ff; padding: 6px 0; }
-  .main { padding: 24px 28px 40px; width: 100%; }
+  .main { padding: 24px 28px 40px; width: 100%; max-width: 1600px; }
   .tabbar { display: none; }
   .mobile-only { display: none !important; }
 }
@@ -136,7 +136,15 @@ textarea { resize: vertical; }
 .feed li:last-child { border-bottom: 0; }
 
 /* ---- Tables ---- */
-.table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+/* Grid and flex children default to min-width: auto, which lets a wide table push the page
+   past the window instead of scrolling inside .table-wrap. */
+.main, .page > * { min-width: 0; }
+.table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; max-width: 100%; }
+table.list-table th, table.list-table td { padding: 8px 7px; }
+table.list-table th { white-space: normal; line-height: 1.2; }
+@media (min-width: 900px) and (max-width: 1439px) { .main { padding: 20px 18px 40px; } }
+table.list-table td.small { font-size: 0.82rem; }
+.tiny { font-size: 0.72rem; }
 table { border-collapse: collapse; width: 100%; font-size: 0.9rem; }
 th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); vertical-align: middle; }
 th { font-weight: 600; color: var(--muted); font-size: 0.8rem; white-space: nowrap; }
