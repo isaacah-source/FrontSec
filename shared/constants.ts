@@ -76,6 +76,22 @@ export function normalizeConnectionKind(kind: string | null | undefined): string
   return legacy[k.toLowerCase()] ?? (CONNECTION_KINDS as readonly string[]).find((x) => x.toLowerCase() === k.toLowerCase()) ?? k;
 }
 
+/**
+ * A row of the "FSI Projects" tab. The FSI Projects app writes this tab whenever someone links
+ * a contact (or a whole organization) to one of its projects; this app only reads it.
+ */
+export interface FsiProject {
+  /** A contact's Unique ID, or "org:<organization name in lower case>" for an organization. */
+  contactKey: string;
+  projectId: string;
+  projectTitle: string;
+  status: string | null;
+  ownerEmail: string | null;
+  role: string | null;
+  active: boolean;
+  link: string | null;
+}
+
 /** A row of the "App Users" tab. */
 export interface User {
   email: string;

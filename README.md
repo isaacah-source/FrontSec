@@ -50,6 +50,9 @@ Works in any browser on a laptop or phone, and can be added to a phone's home sc
 - **Business cards.** Your phone's own text reader (Google Lens on Android, Live Text on
   iPhone) reads the card; paste the text into the new-contact form, or on Android share it
   straight to the app, and the form fills in. See *Adding a business card*.
+- **FSI projects.** Each contact page lists the FSI projects the person, or their
+  organization, is linked to in the FSI Projects app. That app writes an **FSI Projects** tab
+  in this workbook; this app only reads it. Link or unlink contacts in the FSI Projects app.
 - **Roles.** Admin, editor, contributor, viewer (see *Access and roles*).
 - **Demo mode.** Open the app with `?demo` at the end of the address to try it with sample
   data and no sign-in. Nothing is saved.
@@ -65,6 +68,7 @@ The first admin to open the app clicks **Set up workbook**, which adds:
 | New tab **Connections** | One row per personal connection between two contacts |
 | New tab **Duplicates** | Pairs flagged as the same person, or marked as different people |
 | New tab **App Users** | Microsoft email, name, and app role for each person |
+| Tab **FSI Projects** | Added and kept up to date by the FSI Projects app, not by this app |
 
 People can keep opening the workbook in Excel. Avoid renaming the Master tab or its column
 headers, as the workbook's own README already advises.
