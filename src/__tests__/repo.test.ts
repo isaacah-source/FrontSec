@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { MemorySheets, type Cell } from "../lib/sheets";
-import { ConflictError, Repo, cellDate, toCell } from "../lib/repo";
+import { ConflictError, Repo, cellDate, orgKey, parseFsiProjects, toCell } from "../lib/repo";
 
 const HEADER = [
   "Unique ID", "Name", "Organization", "Relationship Type", "Status", "Relationship Owner", "Email", "Phone", "Geo",
@@ -139,5 +139,30 @@ describe("writing", () => {
     const users = (await repo.load()).users;
     expect(users).toHaveLength(2);
     expect(users[1].role).toBe("contributor");
+  });
+});
+
+describe("FSI Projects tab", () => {
+  const TAB = [
+    ["Contact ID", "Contact", "Project ID", "Project", "Project Status", "Project Owner", "Role", "Active", "Project Link", "Updated At"],
+    [1, "Ellen Nakashima", "7", "Paper 1", "In progress", "aaron@frontsec.org", "Reviewer", "Yes", "https://app/projects/7", "t"],
+    [2, "Jason Matheny", "8", "Old dinner", "Done", "", "", "No", "", "t"],
+    ["org:rand", "RAND", "9", "Wargame", "In progress", "", "Player cell", "Yes", "", "t"],
+  ];
+
+  it("is empty when the FSI Projects app has not written the tab", async () => {
+    expect((await repo.load()).fsiProjects).toEqual([]);
+  });
+
+  it("loads active links only", async () => {
+    io = new MemorySheets({ Master: [HEADER, row(1, "Ellen Nakashima", "Washington Post")], "FSI Projects": TAB });
+    const s = await new Repo(io, me).load();
+    expect(s.fsiProjects.map((p) => p.projectTitle)).toEqual(["Paper 1", "Wargame"]);
+    expect(s.fsiProjects[0]).toMatchObject({ contactKey: "1", role: "Reviewer", link: "https://app/projects/7" });
+  });
+
+  it("matches organizations the way the FSI Projects app keys them", () => {
+    expect(orgKey("  RAND ")).toBe("org:rand");
+    expect(parseFsiProjects(TAB).find((p) => p.contactKey === orgKey("RAND"))?.projectTitle).toBe("Wargame");
   });
 });
