@@ -1,5 +1,5 @@
 import type { Cell, SheetIO } from "./sheets";
-import { STATUSES, type Connection, type Contact, type DuplicateMark, type Interaction, type Role, type User, ROLES } from "../../shared/constants";
+import { STATUSES, type Connection, type Contact, type DuplicateMark, type FsiProject, type Interaction, type Role, type User, ROLES } from "../../shared/constants";
 
 /**
  * Reads and writes the relationship workbook. The Master tab keeps its original columns
@@ -17,6 +17,8 @@ export const TOUCHPOINTS = "Touchpoints";
 export const CONNECTIONS = "Connections";
 export const USERS = "App Users";
 export const DUPLICATES = "Duplicates";
+/** Written by the FSI Projects app; read-only here. */
+export const FSI_PROJECTS = "FSI Projects";
 
 type Field = keyof Contact;
 
@@ -81,6 +83,8 @@ export interface Snapshot {
   connections: Connection[];
   users: User[];
   duplicateMarks: DuplicateMark[];
+  /** Active links to FSI projects, from the FSI Projects tab (empty when it does not exist). */
+  fsiProjects: FsiProject[];
   /** False until an admin runs setup (the App Users tab does not exist yet). */
   initialized: boolean;
 }
@@ -130,12 +134,13 @@ export class Repo {
   constructor(private io: SheetIO, private me: Me) {}
 
   async load(): Promise<Snapshot> {
-    const [master, touch, conn, users, dups] = await Promise.all([
+    const [master, touch, conn, users, dups, projects] = await Promise.all([
       this.io.read(MASTER),
       this.io.read(TOUCHPOINTS),
       this.io.read(CONNECTIONS),
       this.io.read(USERS),
       this.io.read(DUPLICATES),
+      this.io.read(FSI_PROJECTS),
     ]);
     if (!master) throw new NotFoundError('The workbook has no "Master" tab.');
     const contacts = parseMaster(master).contacts;
@@ -146,6 +151,7 @@ export class Repo {
       connections: parseConnections(conn ?? []).filter((x) => ids.has(x.contactA) && ids.has(x.contactB)),
       users: parseUsers(users ?? []),
       duplicateMarks: parseDuplicates(dups ?? []).filter((x) => ids.has(x.contactA) && ids.has(x.contactB)),
+      fsiProjects: parseFsiProjects(projects ?? []).filter((p) => p.active),
       initialized: users !== null,
     };
   }
@@ -566,6 +572,34 @@ function parseConnections(rows: Cell[][]): Connection[] {
     kind: cellText(r[5]) ?? "Other",
     note: cellText(r[6]),
   }));
+}
+
+/** Reads the FSI Projects tab by header name, so the other app can add columns later. */
+export function parseFsiProjects(rows: Cell[][]): FsiProject[] {
+  if (!rows.length) return [];
+  const header = rows[0].map(norm);
+  const at = (name: string) => header.indexOf(name);
+  const c = {
+    key: at("contact id"), id: at("project id"), title: at("project"), status: at("project status"),
+    owner: at("project owner"), role: at("role"), active: at("active"), link: at("project link"),
+  };
+  if (c.key < 0 || c.id < 0) return [];
+  const get = (r: Cell[], i: number) => (i < 0 ? null : cellText(r[i]));
+  return rows.slice(1).filter((r) => get(r, c.key) && get(r, c.id)).map((r) => ({
+    contactKey: get(r, c.key)!,
+    projectId: get(r, c.id)!,
+    projectTitle: get(r, c.title) ?? "Untitled project",
+    status: get(r, c.status),
+    ownerEmail: get(r, c.owner),
+    role: get(r, c.role),
+    active: !/^(n|no|false|0)$/i.test(get(r, c.active) ?? ""),
+    link: get(r, c.link),
+  }));
+}
+
+/** The key the FSI Projects app uses for an organization: "org:" plus its name in lower case. */
+export function orgKey(organization: string): string {
+  return `org:${organization.trim().toLowerCase().replace(/\s+/g, " ")}`;
 }
 
 function parseUsers(rows: Cell[][]): User[] {

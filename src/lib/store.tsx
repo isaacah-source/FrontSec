@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Repo, type Me, type Snapshot } from "./repo";
 import type { SheetIO } from "./sheets";
-import type { Connection, Contact, DuplicateMark, Interaction, Role, User } from "../../shared/constants";
+import type { Connection, Contact, DuplicateMark, FsiProject, Interaction, Role, User } from "../../shared/constants";
 import { findDuplicates, type DuplicatePair } from "./duplicates";
 
 interface Toast {
@@ -28,6 +28,8 @@ interface Store {
   interactions: Interaction[];
   connections: Connection[];
   duplicateMarks: DuplicateMark[];
+  /** Links to FSI projects, written by the FSI Projects app. */
+  fsiProjects: FsiProject[];
   /** Likely duplicate pairs, strongest first (see duplicates.ts). */
   duplicates: DuplicatePair[];
   initialized: boolean;
@@ -134,7 +136,7 @@ export function DataProvider({ io, identity, links, signOut, initial, children }
 
   const value = useMemo<Store>(() => ({
     me, users: snap.users, contacts: snap.contacts, interactions: snap.interactions, connections: snap.connections,
-    duplicateMarks: snap.duplicateMarks ?? [], duplicates,
+    duplicateMarks: snap.duplicateMarks ?? [], fsiProjects: snap.fsiProjects ?? [], duplicates,
     initialized: snap.initialized, links, online, lastSync, repo, mutate, refresh, toasts, toast, signOut,
   }), [me, snap, duplicates, links, online, lastSync, repo, mutate, refresh, toasts, toast, signOut]);
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

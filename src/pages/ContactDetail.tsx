@@ -4,11 +4,12 @@ import { addDays, can, canEditContact, errorText, formatDate, formatSaved, isOwn
 import { Empty, Field, FollowUp, StatusBadge, initials } from "../components/ui";
 import { ContactPicker } from "../components/ContactPicker";
 import { ownerNames } from "./Contacts";
-import { CONNECTION_KINDS, INTERACTION_TYPES, STATUSES, contactTypes, parseExtras, splitIssues, type Contact } from "../../shared/constants";
+import { CONNECTION_KINDS, INTERACTION_TYPES, STATUSES, contactTypes, parseExtras, splitIssues, type Contact, type FsiProject } from "../../shared/constants";
+import { orgKey } from "../lib/repo";
 
 export default function ContactDetail() {
   const id = Number(useParams().id);
-  const { me, users, contacts, interactions, connections, duplicates, mutate, toast } = useStore();
+  const { me, users, contacts, interactions, connections, duplicates, fsiProjects, mutate, toast } = useStore();
   const [flagging, setFlagging] = useState(false);
   const navigate = useNavigate();
   const [showLog, setShowLog] = useState(false);
@@ -182,6 +183,8 @@ export default function ContactDetail() {
         </section>
       </div>
 
+      <FsiProjects contact={c} projects={fsiProjects} />
+
       <section className="card">
         <h2>Touchpoints</h2>
         {related.log.length === 0 ? (
@@ -243,6 +246,36 @@ export default function ContactDetail() {
         {isOwner(me, c) && <p className="muted small">You own this relationship.</p>}
       </section>
     </div>
+  );
+}
+
+/** FSI projects this person, or their organization, is linked to in the FSI Projects app. */
+function FsiProjects({ contact, projects }: { contact: Contact; projects: FsiProject[] }) {
+  const direct = projects.filter((p) => p.contactKey === String(contact.id));
+  const viaOrg = contact.organization
+    ? projects.filter((p) => p.contactKey === orgKey(contact.organization!) && !direct.some((d) => d.projectId === p.projectId))
+    : [];
+  if (!direct.length && !viaOrg.length) return null;
+  const item = (p: FsiProject) => (
+    <li key={`${p.contactKey}:${p.projectId}`}>
+      {p.link ? <a href={p.link} target="_blank" rel="noreferrer">{p.projectTitle}</a> : p.projectTitle}
+      <span className="muted small">
+        {p.role ? ` · ${p.role}` : ""}{p.status ? ` · ${p.status}` : ""}{p.ownerEmail ? ` · Owner: ${p.ownerEmail}` : ""}
+      </span>
+    </li>
+  );
+  return (
+    <section className="card">
+      <h2>FSI projects</h2>
+      {direct.length > 0 && <ul className="plain">{direct.map(item)}</ul>}
+      {viaOrg.length > 0 && (
+        <>
+          <h3>Through {contact.organization}</h3>
+          <ul className="plain">{viaOrg.map(item)}</ul>
+        </>
+      )}
+      <p className="muted small">From the FSI Projects app. Link or unlink contacts there.</p>
+    </section>
   );
 }
 

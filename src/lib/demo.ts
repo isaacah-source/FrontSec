@@ -32,5 +32,14 @@ export async function demoSheets(): Promise<MemorySheets> {
     rows.push([i + 1, name, org, type, status, owner, `${name.split(" ")[0].toLowerCase()}@example.org`, null, "Washington, D.C.",
       issues, "N", "N", null, null, null, null, "2026-10-05", "Demo", null, null]);
   });
-  return new MemorySheets({ Master: rows, "App Users": [["Email", "Name", "Role", "Active"], ["demo@example.org", "Demo User", "admin", "Y"]] });
+  return new MemorySheets({
+    Master: rows,
+    "App Users": [["Email", "Name", "Role", "Active"], ["demo@example.org", "Demo User", "admin", "Y"]],
+    // As the FSI Projects app writes it: one contact and one whole organization linked.
+    "FSI Projects": [
+      ["Contact ID", "Contact", "Project ID", "Project", "Project Status", "Project Owner", "Role", "Active", "Project Link", "Updated At"],
+      [1, "Dana Whitfield", "1", "U.S.-China Strategic AI: Paper 1", "In progress", "aaron@example.org", "External reviewer", "Yes", "", "2026-10-20T12:00:00Z"],
+      ["org:northwind ai", "Northwind AI", "3", "Frontier AI crisis wargame", "In progress", "dana@example.org", "Player cell", "Yes", "", "2026-10-20T12:00:00Z"],
+    ],
+  });
 }
