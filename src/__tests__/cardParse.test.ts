@@ -19,6 +19,7 @@ describe("parseCardText", () => {
     expect(card.organization).toBe("RAND Corporation");
     expect(card.email).toBe("jdoe@rand.org");
     expect(card.phone).toBe("(703) 555-0142");
+    expect(card.otherPhones).toBe("Office: 703.555.0100");
     expect(card.website).toBe("www.rand.org");
     expect(card.geo).toBe("Arlington, VA");
   });
@@ -146,5 +147,16 @@ describe("reading a small-caps congressional card", () => {
 
   it("keeps committee lines readable in the notes", () => {
     expect(parseCardText(SMALL_CAPS_CARD).other).toContain("TRADE SUBCOMMITTEE");
+  });
+});
+
+describe("several numbers and addresses", () => {
+  it("keeps each with its label and moves a fax to the leftovers", () => {
+    const card = parseCardText("Pat Lee\nDirector\nExample Institute\nT 202.555.0100 | F 202.555.0199\nCell: (202) 555-0123\npat@example.org  plee@gmail.com");
+    expect(card.phone).toBe("(202) 555-0123");
+    expect(card.otherPhones).toBe("Office: 202.555.0100");
+    expect(card.email).toBe("pat@example.org");
+    expect(card.otherEmails).toBe("plee@gmail.com");
+    expect(card.other).toContain("Fax: 202.555.0199");
   });
 });

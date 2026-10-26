@@ -67,7 +67,7 @@ export default function Contacts() {
       if (dup && !dupIds.has(c.id)) return false;
       if (issue && !splitIssues(c.tags, c.interestArea).some((i) => i.toLowerCase() === issue.toLowerCase())) return false;
       if (terms.length) {
-        const hay = [c.name, c.organization, c.office, c.title, c.email, c.notes, c.tags, c.interestArea, c.geo, c.owner]
+        const hay = [c.name, c.organization, c.office, c.title, c.email, c.otherEmails, c.phone, c.otherPhones, c.notes, c.tags, c.interestArea, c.geo, c.owner]
           .filter(Boolean).join(" ").toLowerCase();
         if (!terms.every((w) => hay.includes(w))) return false;
       }

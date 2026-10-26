@@ -126,3 +126,24 @@ describe("network boxes", () => {
     expect(elements.findIndex((e) => e.data.id === "org:rand")).toBeLessThan(elements.findIndex((e) => e.data.id === "c:1"));
   });
 });
+
+describe("more than one email and phone", () => {
+  it("reads and writes labeled lists", async () => {
+    const { parseExtras, joinExtras, allEmails, allPhones } = await import("../../shared/constants");
+    expect(parseExtras("Mobile: 202-555-0100; personal@x.org;  ")).toEqual([{ label: "Mobile", value: "202-555-0100" }, { label: "", value: "personal@x.org" }]);
+    expect(joinExtras([{ label: "Work", value: " a@b.org " }, { label: "Other", value: "" }])).toBe("Work: a@b.org");
+    expect(allEmails({ email: "A@b.org", otherEmails: "Personal: a@b.org; c@d.org" })).toEqual(["A@b.org", "c@d.org"]);
+    expect(allPhones({ phone: "(202) 555-0100", otherPhones: "Office: 202.555.0100; Mobile: 202-555-0111" })).toEqual(["(202) 555-0100", "202-555-0111"]);
+  });
+
+  it("finds duplicates through any address or number, and saves the extra columns", async () => {
+    await repo.updateContact(3, { otherEmails: "Personal: nakashima@gmail.com" });
+    await repo.updateContact(8, { email: "nakashima@gmail.com", otherPhones: "Mobile: 202 555 0100" });
+    const s = await repo.load();
+    const pairs = findDuplicates(s.contacts, s.duplicateMarks);
+    expect(pairOf(pairs, 3, 8)?.reasons).toContain("same email");
+    expect(pairOf(pairs, 8, 2)?.reasons).toContain("same phone");
+    expect(io.sheets.get("Master")![0]).toEqual(expect.arrayContaining(["Other Emails", "Other Phones"]));
+    expect(s.contacts.find((c) => c.id === 3)!.otherEmails).toBe("Personal: nakashima@gmail.com");
+  });
+});

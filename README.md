@@ -45,6 +45,11 @@ Works in any browser on a laptop or phone, and can be added to a phone's home sc
   **Contacts → Duplicates** lists them; **Compare and merge** shows both records side by side,
   lets you pick each value, and moves touchpoints and connections to the kept contact.
   "Not the same person" stops a pair being suggested. Decisions live in a **Duplicates** tab.
+- **More than one email and phone.** Email and Phone stay the main ones (the category tabs
+  read them); "+ Add another email" and "+ Add another phone" on the form add more, each with
+  a label such as Mobile, Office or Personal, saved in **Other Emails** and **Other Phones**
+  as "Mobile: 202-555-0100; Personal: name@example.org". Search, duplicate checks, imports
+  and merges use every address and number. Card text keeps every number it finds.
 - **Sort by date added.** The Sort menu on Contacts (and the Added column) lists the newest
   additions first.
 - **Business cards.** Your phone's own text reader (Google Lens on Android, Live Text on
@@ -63,7 +68,7 @@ The first admin to open the app clicks **Set up workbook**, which adds:
 
 | Where | What |
 |-------|------|
-| Master, after column T | Title, LinkedIn, Website, Address, Updated At, Updated By, Other Types, Office / Department |
+| Master, after column T | Title, LinkedIn, Website, Address, Updated At, Updated By, Other Types, Office / Department, Other Emails, Other Phones |
 | New tab **Touchpoints** | One row per logged meeting, call, or email |
 | New tab **Connections** | One row per personal connection between two contacts |
 | New tab **Duplicates** | Pairs flagged as the same person, or marked as different people |

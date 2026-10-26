@@ -1,6 +1,6 @@
 import { cellDate, cellText, parseMaster, updatableField } from "./repo";
 import type { Cell } from "./sheets";
-import { INTERACTION_TYPES, normalizeConnectionKind, type Contact, type Interaction } from "../../shared/constants";
+import { INTERACTION_TYPES, allEmails, normalizeConnectionKind, type Contact, type Interaction } from "../../shared/constants";
 
 /**
  * Turns a spreadsheet of contacts into an import plan. The contacts tab uses the same
@@ -84,7 +84,7 @@ function headerOf(s: SheetIn): string[] {
 }
 
 function contactRows(sheet: SheetIn, existing: Contact[]): ImportRow[] {
-  const byEmail = new Map(existing.filter((c) => c.email).map((c) => [c.email!.toLowerCase(), c]));
+  const byEmail = new Map(existing.flatMap((c) => allEmails(c).map((e) => [e.toLowerCase(), c] as const)));
   const byName = new Map(existing.map((c) => [key(c.name), c]));
   const seenEmail = new Map<string, string>();
   const seenName = new Map<string, string>();
@@ -98,7 +98,8 @@ function contactRows(sheet: SheetIn, existing: Contact[]): ImportRow[] {
     if (!cellText(r[nameAt] ?? null) && emailAt >= 0 && cellText(r[emailAt] ?? null)) r[nameAt] = cellText(r[emailAt])!;
   }
   return parseMaster(cells).contacts.map(({ row: _row, id, updatedAt: _u, updatedBy: _b, ...c }) => {
-    const email = c.email?.toLowerCase() ?? "";
+    const emails = allEmails({ email: c.email ?? null, otherEmails: c.otherEmails }).map((e) => e.toLowerCase());
+    const email = emails.find((e) => byEmail.has(e)) ?? emails[0] ?? "";
     const name = key(c.name);
     let duplicateOf: ImportRow["duplicateOf"] = null;
     const hit = (email && byEmail.get(email)) || (name.length > 3 && byName.get(name));
