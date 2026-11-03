@@ -43,6 +43,8 @@ interface Store {
   toasts: Toast[];
   toast: (text: string) => void;
   signOut: () => void;
+  /** Reads the signed-in person's mail; absent in demo mode. Only the email review calls it. */
+  mailToken?: () => Promise<string>;
 }
 
 const Ctx = createContext<Store | null>(null);
@@ -61,12 +63,13 @@ const FULL_RELOAD_MS = 60_000;
  * asks OneDrive whether the file changed and reloads if so; it also reloads once a minute
  * regardless, because edits made through Excel's own sessions can lag the file version.
  */
-export function DataProvider({ io, identity, links, signOut, initial, children }: {
+export function DataProvider({ io, identity, links, signOut, initial, mailToken, children }: {
   io: SheetIO;
   identity: Me;
   links: Links;
   signOut: () => void;
   initial: Snapshot;
+  mailToken?: () => Promise<string>;
   children: ReactNode;
 }) {
   const repo = useMemo(() => new Repo(io, identity), [io, identity]);
@@ -137,8 +140,8 @@ export function DataProvider({ io, identity, links, signOut, initial, children }
   const value = useMemo<Store>(() => ({
     me, users: snap.users, contacts: snap.contacts, interactions: snap.interactions, connections: snap.connections,
     duplicateMarks: snap.duplicateMarks ?? [], fsiProjects: snap.fsiProjects ?? [], duplicates,
-    initialized: snap.initialized, links, online, lastSync, repo, mutate, refresh, toasts, toast, signOut,
-  }), [me, snap, duplicates, links, online, lastSync, repo, mutate, refresh, toasts, toast, signOut]);
+    initialized: snap.initialized, links, online, lastSync, repo, mutate, refresh, toasts, toast, signOut, mailToken,
+  }), [me, snap, duplicates, links, online, lastSync, repo, mutate, refresh, toasts, toast, signOut, mailToken]);
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }
 
