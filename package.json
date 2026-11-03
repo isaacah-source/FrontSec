@@ -11,6 +11,7 @@
     "typecheck": "tsc -b"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "0.135.0",
     "@azure/msal-browser": "^5.25.0",
     "cytoscape": "^3.34.3",
     "cytoscape-fcose": "^2.2.0",

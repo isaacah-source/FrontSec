@@ -214,6 +214,37 @@ The icons use the Frontier Security Institute mark. `icon-src/logo.svg` is a vec
 `public/icons`. To change the icon, edit or replace `logo.svg` (keep its 103 x 93 shape, or
 update `LOGO_W` and `LOGO_H` in the script) and run `node icon-src/make-icons.mjs`.
 
+## Reviewing email with Claude
+
+**Contacts → Import → Review my email with Claude** reads your Inbox and Sent Items from the
+chosen date (by default, where your last review ended) and sends the threads that involve
+people outside FSI to Claude (`claude-opus-5-5`). Claude suggests new contacts, updates to
+existing contacts (new title, phone, address, office, follow-up dates, extra email
+addresses, name fixes), touchpoints to log, and connections, and lists the addresses it set
+aside. They appear in the usual import review with a checkbox each; nothing is saved until
+you press **Save**.
+
+- Your mail is read only when you press the button, in your browser, with your own
+  Microsoft sign-in. The app holds no mail permission until then, and keeps nothing except
+  what you save to the tracker.
+- The threads go to the Claude API under FSI's API key. Each weekly review costs roughly
+  US$0.50 to $2 depending on volume; the app shows the cost after each run.
+
+One-time setup:
+
+1. **Mail permission.** In the [Microsoft Entra admin center](https://entra.microsoft.com),
+   open **App registrations → Relationship Tracker → API permissions → Add a permission →
+   Microsoft Graph → Delegated permissions**, tick **Mail.Read**, and click **Add
+   permissions**. Optionally click **Grant admin consent for Frontier Security Institute** so
+   no one sees a consent prompt; otherwise each person approves it the first time they press
+   the button (a Microsoft pop-up; allow pop-ups for the tracker's site).
+2. **Claude API key.** At [console.anthropic.com](https://console.anthropic.com), add billing
+   credits, then **API keys → Create key**. In the tracker, press **Claude API key** under the
+   review button, paste the key, and press **Save key**. The key is stored only in that
+   browser; each device that runs reviews needs it once. Anyone who can open that browser
+   profile can use the key, so use it only on your own devices, and set a monthly spend
+   limit in the Claude Console.
+
 ## Relationship types
 
 The app offers these types: Fellows, Advisors, Board, AI Labs, Media, Policy/NatSec/Gov,

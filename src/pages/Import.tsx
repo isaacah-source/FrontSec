@@ -2,7 +2,8 @@ import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { can, errorText, formatDate, useStore } from "../lib/store";
 import { Empty } from "../components/ui";
-import { planImport, type End, type ImportPlan } from "../lib/importFile";
+import { planImport, type End, type ImportPlan, type SheetIn } from "../lib/importFile";
+import { EmailReview } from "../components/EmailReview";
 import { contactTypes, type Contact } from "../../shared/constants";
 
 /**
@@ -20,6 +21,8 @@ export default function Import() {
   const [progress, setProgress] = useState<string | null>(null);
   const [result, setResult] = useState<{ added: Contact[]; links: number; skippedLinks: number; updated: number; touched: number } | null>(null);
   const [show, setShow] = useState<"all" | "new" | "dup">("all");
+  // Set when the rows came from an email review: remembers that review's date once saved.
+  const [onSaved, setOnSaved] = useState<(() => void) | null>(null);
 
   const rows = useMemo(() => {
     if (!plan) return [];
@@ -28,6 +31,15 @@ export default function Import() {
 
   if (!can(me, "editor")) return <div className="page"><Empty>Only editors and admins can import contacts.</Empty></div>;
 
+  // Shows a set of tabs (from a file or from Claude's email review) for review.
+  const showSheets = (sheets: SheetIn[], label: string) => {
+    const p = planImport(sheets, contacts, interactions);
+    setFileName(label);
+    setResult(null);
+    setPlan(p);
+    setPicked(new Set(p.rows.filter((r) => !r.duplicateOf).map((r) => r.fileId)));
+    setPickedNews(new Set([...p.updates.map((u) => u.key), ...p.touches.filter((t) => !t.duplicate).map((t) => t.key)]));
+  };
   const open = async (file: File | undefined) => {
     setError("");
     setResult(null);
@@ -37,10 +49,8 @@ export default function Import() {
     try {
       const { default: readXlsxFile } = await import("read-excel-file/browser");
       const sheets = await readXlsxFile(file);
-      const p = planImport(sheets as { sheet: string; data: unknown[][] }[], contacts, interactions);
-      setPlan(p);
-      setPicked(new Set(p.rows.filter((r) => !r.duplicateOf).map((r) => r.fileId)));
-      setPickedNews(new Set([...p.updates.map((u) => u.key), ...p.touches.filter((t) => !t.duplicate).map((t) => t.key)]));
+      setOnSaved(null);
+      showSheets(sheets as SheetIn[], file.name);
     } catch (e) {
       setError(/zip|xlsx|spreadsheet/i.test(String(e)) ? "That file could not be read as an Excel workbook (.xlsx)." : errorText(e));
     }
@@ -97,6 +107,8 @@ export default function Import() {
         return { added, links, skippedLinks: skipped + plan.unmatchedLinks, updated: byContact.size, touched };
       });
       setResult(out);
+      onSaved?.();
+      setOnSaved(null);
       setPlan(null);
       toast(`Saved: ${summary(out.added.length, out.updated, out.touched)}.`);
     } catch (e) {
@@ -124,6 +136,12 @@ export default function Import() {
     <div className="page">
       <div className="crumbs"><Link to="/contacts">← Contacts</Link></div>
       <header className="page-head"><h1>Import contacts and updates</h1></header>
+
+      <EmailReview disabled={!!progress} onFindings={(sheets, label, saved) => {
+        setError("");
+        showSheets(sheets, label);
+        setOnSaved(() => saved);
+      }} />
 
       <section className="card">
         <p>

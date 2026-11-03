@@ -106,7 +106,8 @@ export default function App() {
       return <Setup {...boot} onDone={start} signOut={signOut} />;
     case "ready":
       return (
-        <DataProvider io={boot.io} identity={boot.me} links={boot.links} signOut={signOut} initial={boot.initial}>
+        <DataProvider io={boot.io} identity={boot.me} links={boot.links} signOut={signOut} initial={boot.initial}
+          mailToken={auth ? () => auth.mailToken() : undefined}>
           <Shell demo={!!cfg?.demo} />
         </DataProvider>
       );
