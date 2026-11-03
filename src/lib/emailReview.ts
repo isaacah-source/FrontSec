@@ -215,6 +215,66 @@ function threadText(threads: Thread[]): string {
   }).join("\n\n");
 }
 
+// ---- Without an API key: paste into a Claude chat ---------------------------------------------
+
+/**
+ * Everything a Claude chat needs for the review, as one block of text to paste (or attach):
+ * the rules, the answer format, the tracker list and the threads. The answer comes back as
+ * one JSON block, which `readPastedAnswer` turns into findings.
+ */
+export function buildChatPrompt(me: { name: string; email: string }, contacts: Contact[], threads: Thread[], since: string, end: string): string {
+  return [
+    `FSI RELATIONSHIP TRACKER: EMAIL REVIEW (${since} to ${end})`,
+    "",
+    rules(me),
+    "",
+    "HOW TO ANSWER: reply with exactly one JSON code block and no other text. It must match this JSON Schema (every field present; use \"\" for unknown text and 0 for an unknown tracker id):",
+    JSON.stringify(SCHEMA),
+    "",
+    trackerList(contacts),
+    "",
+    "EMAIL THREADS TO REVIEW:",
+    "",
+    threadText(threads),
+    "",
+    "END OF EMAIL THREADS. Now reply with the single JSON code block only.",
+  ].join("\n");
+}
+
+/** Reads the JSON block from a pasted Claude reply (code fences and stray text are fine). */
+export function readPastedAnswer(text: string): Findings {
+  const start = text.indexOf("{");
+  const end = text.lastIndexOf("}");
+  if (start < 0) throw new ReviewError("That does not look like Claude's answer: no JSON block found. Copy Claude's whole reply and paste it again.");
+  const cutOff = "Claude's answer is cut off or not valid JSON. If the reply was long, ask Claude to \"continue\", then paste both parts together, or review a shorter date range.";
+  if (end <= start) throw new ReviewError(cutOff);
+  let raw: Partial<Findings>;
+  try {
+    raw = JSON.parse(text.slice(start, end + 1));
+  } catch {
+    throw new ReviewError(cutOff);
+  }
+  const list = <T,>(v: unknown): T[] => (Array.isArray(v) ? (v as T[]) : []);
+  const s = (v: unknown) => (typeof v === "string" ? v : v === null || v === undefined ? "" : String(v));
+  const n = (v: unknown) => (Number.isInteger(Number(v)) ? Number(v) : 0);
+  const findings: Findings = {
+    new_contacts: list<Record<string, unknown>>(raw.new_contacts).map((c) => Object.fromEntries(Object.entries(c).map(([k, v]) => [k, s(v)]))),
+    updates: list<Record<string, unknown>>(raw.updates).map((u) => ({ tracker_id: n(u.tracker_id), field: s(u.field), new_value: s(u.new_value), source: s(u.source) })),
+    touchpoints: list<Record<string, unknown>>(raw.touchpoints).map((t) => ({
+      tracker_id: n(t.tracker_id), new_contact_email: s(t.new_contact_email), date: s(t.date), type: s(t.type) || "Email", summary: s(t.summary),
+    })),
+    connections: list<Record<string, unknown>>(raw.connections).map((c) => ({
+      a_tracker_id: n(c.a_tracker_id), a_email: s(c.a_email), b_tracker_id: n(c.b_tracker_id), b_email: s(c.b_email),
+      kind: s(c.kind) || "Other", note: s(c.note),
+    })),
+    skipped: list<Record<string, unknown>>(raw.skipped).map((x) => ({ email: s(x.email), reason: s(x.reason) })),
+  };
+  if (!findings.new_contacts.length && !findings.updates.length && !findings.touchpoints.length && !findings.connections.length && !Array.isArray(raw.skipped)) {
+    throw new ReviewError("That JSON is not an email review answer. Copy Claude's reply to the prepared email and paste it again.");
+  }
+  return mergeFindings(findings);
+}
+
 export interface Usage {
   input: number;
   output: number;

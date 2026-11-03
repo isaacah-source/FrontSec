@@ -216,34 +216,33 @@ update `LOGO_W` and `LOGO_H` in the script) and run `node icon-src/make-icons.mj
 
 ## Reviewing email with Claude
 
-**Contacts → Import → Review my email with Claude** reads your Inbox and Sent Items from the
-chosen date (by default, where your last review ended) and sends the threads that involve
-people outside FSI to Claude (`claude-opus-5-5`). Claude suggests new contacts, updates to
-existing contacts (new title, phone, address, office, follow-up dates, extra email
-addresses, name fixes), touchpoints to log, and connections, and lists the addresses it set
-aside. They appear in the usual import review with a checkbox each; nothing is saved until
-you press **Save**.
+**Contacts → Import → Review my email with Claude.** Pick a start date (by default, where your
+last saved review ended), then:
 
-- Your mail is read only when you press the button, in your browser, with your own
-  Microsoft sign-in. The app holds no mail permission until then, and keeps nothing except
-  what you save to the tracker.
-- The threads go to the Claude API under FSI's API key. Each weekly review costs roughly
-  US$0.50 to $2 depending on volume; the app shows the cost after each run.
+1. **Prepare my email for Claude.** The app reads your Inbox and Sent Items from that date,
+   keeps the conversations with people outside FSI (internal, automated and travel mail is
+   dropped), and copies them to your clipboard with Claude's instructions and a short copy
+   of the tracker for matching. **Download as a file** gives the same text as a file to attach.
+2. Paste (or attach) it in a new chat at [claude.ai](https://claude.ai/new) or the Claude app,
+   on your own Claude plan. Claude replies with one block of JSON.
+3. Paste Claude's whole reply into the box and press **Read Claude's answer**. Claude's
+   suggested new contacts, updates (titles, phones, addresses, offices, follow-up dates,
+   extra email addresses, name fixes), touchpoints and connections appear in the usual
+   import review with a checkbox each. Nothing is saved until you press **Save**.
 
-One-time setup:
+Your mail is read only when you press the button, in your browser, with your own Microsoft
+sign-in; the app holds no mail permission until then. Claude sees only the text you paste.
 
-1. **Mail permission.** In the [Microsoft Entra admin center](https://entra.microsoft.com),
-   open **App registrations → Relationship Tracker → API permissions → Add a permission →
-   Microsoft Graph → Delegated permissions**, tick **Mail.Read**, and click **Add
-   permissions**. Optionally click **Grant admin consent for Frontier Security Institute** so
-   no one sees a consent prompt; otherwise each person approves it the first time they press
-   the button (a Microsoft pop-up; allow pop-ups for the tracker's site).
-2. **Claude API key.** At [console.anthropic.com](https://console.anthropic.com), add billing
-   credits, then **API keys → Create key**. In the tracker, press **Claude API key** under the
-   review button, paste the key, and press **Save key**. The key is stored only in that
-   browser; each device that runs reviews needs it once. Anyone who can open that browser
-   profile can use the key, so use it only on your own devices, and set a monthly spend
-   limit in the Claude Console.
+One-time setup: in the [Microsoft Entra admin center](https://entra.microsoft.com), open
+**App registrations → Relationship Tracker → API permissions → Add a permission → Microsoft
+Graph → Delegated permissions**, tick **Mail.Read**, and click **Add permissions** (optionally
+**Grant admin consent** so no one sees a consent pop-up; otherwise each person approves it
+the first time, in a Microsoft pop-up).
+
+**With a Claude API key instead** (optional, billed per use, roughly US$0.50 to $2 a week):
+choose **Use a Claude API key instead**, paste a key from
+[console.anthropic.com](https://console.anthropic.com), and one button does all three steps.
+The key is stored only in that browser.
 
 ## Relationship types
 
