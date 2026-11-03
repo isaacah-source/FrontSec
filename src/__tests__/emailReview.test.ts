@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { trimQuoted, type MailMessage } from "../lib/mailFetch";
-import { chunkThreads, findingsToSheets, mergeFindings, threadsToReview, type Findings } from "../lib/emailReview";
+import { buildChatPrompt, chunkThreads, findingsToSheets, mergeFindings, readPastedAnswer, threadsToReview, type Findings } from "../lib/emailReview";
 import { planImport } from "../lib/importFile";
 import type { Contact } from "../../shared/constants";
 
@@ -90,5 +90,38 @@ describe("turning Claude's findings into rows to review", () => {
     expect([plan.links[0].a, plan.links[0].b]).toEqual(expect.arrayContaining([
       { trackerId: 12, name: "Leah Siskind" }, { fileId: 900001, name: "Yoko Kubota" },
     ]));
+  });
+});
+
+describe("reviewing without an API key", () => {
+  const contacts = [contact(12, "Leah Siskind", "lsiskind@fdd.org")];
+
+  it("prepares one block with the rules, answer format, tracker and threads", () => {
+    const threads = threadsToReview([msg({ from: "jane@example.org", subject: "Coffee next week", body: "Jane Doe\nDirector" })], "iharris@frontsec.org");
+    const text = buildChatPrompt({ name: "Ike Harris", email: "iharris@frontsec.org" }, contacts, threads, "2026-10-26", "2026-11-02");
+    expect(text).toMatch(/^FSI RELATIONSHIP TRACKER: EMAIL REVIEW \(2026-10-26 to 2026-11-02\)/);
+    expect(text).toContain('"new_contacts"');
+    expect(text).toContain("12 | Leah Siskind | Org");
+    expect(text).toContain("Subject: Coffee next week");
+    expect(text.trim().endsWith("Now reply with the single JSON code block only.")).toBe(true);
+  });
+
+  it("reads Claude's reply with code fences and loose values", () => {
+    const reply = 'Here is the review:\n```json\n{"new_contacts":[{"email":"Jane@Example.org","name":"Jane Doe","organization":"Example","last_contact":"2026-10-28"}],' +
+      '"updates":[{"tracker_id":"12","field":"Title","new_value":"Senior Fellow","source":"Signature"}],' +
+      '"touchpoints":[{"tracker_id":0,"new_contact_email":"jane@example.org","date":"2026-10-28","type":"Email","summary":"Set up coffee."}],' +
+      '"connections":[],"skipped":[{"email":"no-reply@x.com","reason":"Automated"}]}\n```\nLet me know if you need anything else.';
+    const f = readPastedAnswer(reply);
+    expect(f.new_contacts[0]).toMatchObject({ email: "jane@example.org", name: "Jane Doe" });
+    expect(f.updates).toEqual([{ tracker_id: 12, field: "Title", new_value: "Senior Fellow", source: "Signature" }]);
+    const plan = planImport(findingsToSheets(f, contacts, "2026-11-03", "Ike Harris"), contacts, []);
+    expect(plan.rows.map((r) => r.contact.name)).toEqual(["Jane Doe"]);
+    expect(plan.touches[0].who).toEqual({ fileId: 900001, name: "Jane Doe" });
+  });
+
+  it("explains a reply that is not an answer or is cut off", () => {
+    expect(() => readPastedAnswer("Sorry, I can't help with that.")).toThrow(/no JSON block/);
+    expect(() => readPastedAnswer('{"new_contacts":[{"email":"a@b.org"')).toThrow(/cut off/);
+    expect(() => readPastedAnswer('{"hello":"world"}')).toThrow(/not an email review answer/);
   });
 });

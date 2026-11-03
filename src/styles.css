@@ -320,3 +320,7 @@ dd.stack { display: flex; flex-direction: column; gap: 2px; }
 .extras { display: flex; flex-direction: column; gap: 6px; margin-top: 6px; align-items: flex-start; }
 .extra-row { display: grid; grid-template-columns: auto 1fr auto; gap: 6px; align-items: center; width: 100%; }
 .extra-row select { width: auto; }
+
+/* Email review steps */
+.card ol.steps { display: flex; flex-direction: column; gap: 10px; padding-left: 20px; margin: 10px 0; }
+.card ol.steps textarea { width: 100%; margin-bottom: 6px; }

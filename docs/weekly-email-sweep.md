@@ -1,8 +1,9 @@
 # Weekly email sweep
 
-**Easiest way:** in the tracker app, open **Contacts → Import** and press **Review my email
-with Claude** (setup: README, "Reviewing email with Claude"). The steps below are the
-manual alternative, run from a Claude session.
+**Easiest way:** in the tracker app, open **Contacts → Import**, press **Prepare my email for
+Claude**, paste the copied text into a Claude chat, and paste Claude's reply back (setup:
+README, "Reviewing email with Claude"). The steps below are the older alternative, run from
+a Claude session with the Microsoft 365 connector.
 
 Every Monday at 9:00 Eastern a Claude routine sends Ike a reminder. Claude has no standing
 access to Outlook; each run gets access only for that run:
